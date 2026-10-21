@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Code2,
+  Activity, AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Clipboard, Code2,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
-  FileText, Folder, FolderPlus, Gamepad2, Grid2X2, Home, Image as ImageIcon, LayoutDashboard, ListTodo, Maximize2, Menu,
+  FileText, Folder, FolderPlus, Gamepad2, Grid2X2, History, Home, Image as ImageIcon, LayoutDashboard, ListTodo, Maximize2, Menu,
   Minus, Moon, MoreHorizontal, PanelTop, Pencil, Play, Plus, Power, RotateCcw, Search, Settings, ShieldCheck,
-  ShoppingBag, Smartphone, Sun, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, type LucideIcon
+  ShoppingBag, Smartphone, Sun, Target, Palette, Sparkles, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, type LucideIcon
 } from 'lucide-react';
 import './styles.css';
 import { evaluateFormula, shownCell, toColumnLabel } from './formulas';
+import { AppStore, ClipboardHub, FocusSpaces, ThemeGallery, AIStudio, TimeMachine, SandboxTerminal, HealthDashboard, type FeatureFile, type HistorySnapshot, type ShelfItem, type PowerAppDefinition } from './PowerApps';
 
-type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf';
-type AppDef = { id: AppId; title: string; description: string; category: string; color: string; Icon: LucideIcon; words: string };
+type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf'|'clipboard'|'focus'|'themes'|'ai-studio'|'time-machine'|'terminal'|'health'|'vexel';
+type AppDef = PowerAppDefinition;
+type MediaStatus = {playing:boolean;title:string;currentTime:number;duration:number};
+type FluidProgress = {label:string;progress:number};
 type Win = { id: number; app: AppId; x: number; y: number; w: number; h: number; min: boolean; max: boolean };
 type EventItem = { id: string; title: string; date: string; time: string; notes: string };
 type NoteItem = { id: string; title: string; body: string; updated: string };
@@ -18,25 +21,34 @@ type VirtualFile = { id: string; name: string; folder: boolean; parent: string; 
 type Prefs = { theme: 'dark'|'light'|'system'; accent: string; wallpaper: string; customWallpaper?: string; transparency: number; motion: boolean; username: string; wifi: boolean; bluetooth: boolean; airplane: boolean; volume: number; brightness: number };
 type CodeLaunch = {name:string;content:string;parent:string}|null;
 type TaskItem = {id:string;title:string;done:boolean;priority:'Low'|'Medium'|'High';created:string};
+const DEFAULT_INSTALLED_APPS:AppId[]=['calendar','sheets','notes','calculator','explorer','paint','photos','clock','games','store','browser','widgets','settings','clipboard'];
 const APPS: AppDef[] = [
- {id:'calendar',title:'Calendar',description:'Plan your days',category:'Productivity',color:'#6b92ff',Icon:CalendarDays,words:'schedule events appointments dates'},
- {id:'sheets',title:'Spreadsheet',description:'Excel-style workbooks, formulas and CSV',category:'Productivity',color:'#48bd91',Icon:FileSpreadsheet,words:'spreadsheet excel workbook formulas csv table cells'},
- {id:'notes',title:'Notes',description:'Capture ideas and reminders',category:'Productivity',color:'#f2c66c',Icon:FileText,words:'notepad writing memo'},
- {id:'calculator',title:'Calculator',description:'Everyday calculations',category:'Utilities',color:'#a18cff',Icon:Calculator,words:'math sum divide numbers'},
- {id:'explorer',title:'File Explorer',description:'Browse your virtual files',category:'Utilities',color:'#65aef8',Icon:Folder,words:'documents folders storage'},
- {id:'paint',title:'Paint',description:'Make a quick sketch',category:'Creative',color:'#f28da4',Icon:Brush,words:'draw canvas art'},
- {id:'photos',title:'Photos',description:'View images you choose',category:'Creative',color:'#c09aff',Icon:ImageIcon,words:'pictures jpg png gallery'},
- {id:'clock',title:'Clock',description:'Time, stopwatch and timer',category:'Utilities',color:'#6bc9de',Icon:Clock3,words:'time timer stopwatch'},
- {id:'games',title:'Games',description:'A bigger collection of casual games',category:'Entertainment',color:'#f18fb9',Icon:Gamepad2,words:'snake memory tic tac toe 2048 minesweeper'},
+ {id:'calendar',title:'Calendar',description:'Plan your days',category:'Productivity',color:'#6b92ff',Icon:CalendarDays,words:'schedule events appointments dates',defaultInstalled:true},
+ {id:'sheets',title:'Spreadsheet',description:'Excel-style workbooks, formulas and CSV',category:'Productivity',color:'#48bd91',Icon:FileSpreadsheet,words:'spreadsheet excel workbook formulas csv table cells',defaultInstalled:true},
+ {id:'notes',title:'Notes',description:'Capture ideas and reminders',category:'Productivity',color:'#f2c66c',Icon:FileText,words:'notepad writing memo',defaultInstalled:true},
+ {id:'calculator',title:'Calculator',description:'Everyday calculations',category:'Utilities',color:'#a18cff',Icon:Calculator,words:'math sum divide numbers',defaultInstalled:true},
+ {id:'explorer',title:'File Explorer',description:'Browse your virtual files',category:'Utilities',color:'#65aef8',Icon:Folder,words:'documents folders storage',defaultInstalled:true},
+ {id:'paint',title:'Paint',description:'Make a quick sketch',category:'Creative',color:'#f28da4',Icon:Brush,words:'draw canvas art',defaultInstalled:true},
+ {id:'photos',title:'Photos',description:'View images you choose',category:'Creative',color:'#c09aff',Icon:ImageIcon,words:'pictures jpg png gallery',defaultInstalled:true},
+ {id:'clock',title:'Clock',description:'Time, stopwatch and timer',category:'Utilities',color:'#6bc9de',Icon:Clock3,words:'time timer stopwatch',defaultInstalled:true},
+ {id:'games',title:'Games',description:'A bigger collection of casual games',category:'Entertainment',color:'#f18fb9',Icon:Gamepad2,words:'snake memory tic tac toe 2048 minesweeper',defaultInstalled:true},
  {id:'code',title:'Code Studio',description:'Run HTML, CSS, JavaScript and Python in your browser',category:'Developer',color:'#7eb8ff',Icon:Code2,words:'editor html css javascript python programming code playground'},
  {id:'documents',title:'Writer',description:'Create and export text documents',category:'Productivity',color:'#74a9ff',Icon:BookText,words:'word processor document writing export txt md'},
  {id:'music',title:'Media Player',description:'Play audio files you choose',category:'Entertainment',color:'#d18aff',Icon:Music,words:'music mp3 wav audio player playlist'},
  {id:'tasks',title:'To Do',description:'Track tasks, priorities and completion',category:'Productivity',color:'#7ad7bd',Icon:ListTodo,words:'checklist todo tasks list priority reminders'},
  {id:'pdf',title:'PDF Reader',description:'Preview PDF files in your browser',category:'Productivity',color:'#ed8d96',Icon:FileText,words:'pdf reader document viewer portable document format'},
- {id:'store',title:'App Library',description:'Explore built-in apps',category:'System',color:'#93a5ff',Icon:ShoppingBag,words:'store install apps'},
- {id:'browser',title:'Web Links',description:'Open useful web destinations',category:'Internet',color:'#6bcdbb',Icon:ExternalLink,words:'browser internet web'},
- {id:'widgets',title:'Widgets',description:'A glance at your day',category:'System',color:'#8ca4bb',Icon:LayoutDashboard,words:'dashboard recent local info'},
- {id:'settings',title:'Settings',description:'Personalize AeroShell',category:'System',color:'#aab4c7',Icon:Settings,words:'theme wallpaper settings'}
+ {id:'clipboard',title:'Clipboard Hub',description:'Collect and drag snippets, links and images',category:'Productivity',color:'#7acdbf',Icon:Clipboard,words:'clipboard copy paste holding shelf snippets',defaultInstalled:true},
+ {id:'focus',title:'Focus Spaces',description:'One-click Code, Writing, Deep Work and Relax modes',category:'Productivity',color:'#8ca6ff',Icon:Target,words:'focus space writing coding productivity'},
+ {id:'themes',title:'Theme Studio',description:'Apply complete desktop palettes and wallpapers',category:'Personalization',color:'#d7a4ed',Icon:Palette,words:'themes wallpaper colors accent background'},
+ {id:'ai-studio',title:'AI Studio',description:'Simulated creative concepts, code templates and image resizing',category:'Creative',color:'#b68cff',Icon:Sparkles,words:'AI image generator code generator upscale creative'},
+ {id:'time-machine',title:'Time Machine',description:'Browse and restore virtual-file snapshots',category:'Utilities',color:'#72bce6',Icon:History,words:'timeline restore history version files'},
+ {id:'terminal',title:'Terminal & Script Lab',description:'Practice commands in a safe simulated shell',category:'Developer',color:'#73d7aa',Icon:Terminal,words:'terminal command line shell sandbox script automation'},
+ {id:'health',title:'System Health',description:'Browser storage, memory and battery diagnostics',category:'System',color:'#e6ae70',Icon:Activity,words:'health battery RAM storage analytics diagnostics'},
+ {id:'vexel',title:'Vexel AI',description:'Open your Vexel AI chat website',category:'Internet',color:'#8c94ff',Icon:Sparkles,words:'Vexel AI chatbot web app AI assistant'}
+ {id:'store',title:'App Library',description:'Explore built-in apps',category:'System',color:'#93a5ff',Icon:ShoppingBag,words:'store install apps',defaultInstalled:true},
+ {id:'browser',title:'Web Links',description:'Open useful web destinations',category:'Internet',color:'#6bcdbb',Icon:ExternalLink,words:'browser internet web',defaultInstalled:true},
+ {id:'widgets',title:'Widgets',description:'A glance at your day',category:'System',color:'#8ca4bb',Icon:LayoutDashboard,words:'dashboard recent local info',defaultInstalled:true},
+ {id:'settings',title:'Settings',description:'Personalize AeroShell',category:'System',color:'#aab4c7',Icon:Settings,words:'theme wallpaper settings',defaultInstalled:true}
 ];
 const dayKey = (d = new Date()) => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 function parseCsv(text:string):string[][] {
