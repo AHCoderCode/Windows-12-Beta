@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, Brush, Calculator, CalendarDays, Check,
+  AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Code2,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
   FileText, Folder, FolderPlus, Gamepad2, Grid2X2, Home, Image as ImageIcon, LayoutDashboard, Maximize2, Menu,
   Minus, Moon, MoreHorizontal, PanelTop, Pencil, Play, Plus, Power, RotateCcw, Search, Settings, ShieldCheck,
-  ShoppingBag, Smartphone, Sun, Trash2, Undo2, Upload, Volume2, Wifi, X, type LucideIcon
+  ShoppingBag, Smartphone, Sun, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, type LucideIcon
 } from 'lucide-react';
 import './styles.css';
 import { evaluateFormula, shownCell } from './formulas';
 
-type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings';
+type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music';
 type AppDef = { id: AppId; title: string; description: string; category: string; color: string; Icon: LucideIcon; words: string };
 type Win = { id: number; app: AppId; x: number; y: number; w: number; h: number; min: boolean; max: boolean };
 type EventItem = { id: string; title: string; date: string; time: string; notes: string };
 type NoteItem = { id: string; title: string; body: string; updated: string };
 type VirtualFile = { id: string; name: string; folder: boolean; parent: string; content?: string };
-type Prefs = { theme: 'dark'|'light'|'system'; accent: string; wallpaper: string; transparency: number; motion: boolean; username: string; wifi: boolean; bluetooth: boolean; airplane: boolean; volume: number; brightness: number };
+type Prefs = { theme: 'dark'|'light'|'system'; accent: string; wallpaper: string; customWallpaper?: string; transparency: number; motion: boolean; username: string; wifi: boolean; bluetooth: boolean; airplane: boolean; volume: number; brightness: number };
+type CodeLaunch = {name:string;content:string;parent:string}|null;
 const APPS: AppDef[] = [
  {id:'calendar',title:'Calendar',description:'Plan your days',category:'Productivity',color:'#6b92ff',Icon:CalendarDays,words:'schedule events appointments dates'},
  {id:'sheets',title:'Sheets',description:'Cells, calculations and CSV',category:'Productivity',color:'#48bd91',Icon:FileSpreadsheet,words:'spreadsheet excel formula csv'},
@@ -25,7 +26,10 @@ const APPS: AppDef[] = [
  {id:'paint',title:'Paint',description:'Make a quick sketch',category:'Creative',color:'#f28da4',Icon:Brush,words:'draw canvas art'},
  {id:'photos',title:'Photos',description:'View images you choose',category:'Creative',color:'#c09aff',Icon:ImageIcon,words:'pictures jpg png gallery'},
  {id:'clock',title:'Clock',description:'Time, stopwatch and timer',category:'Utilities',color:'#6bc9de',Icon:Clock3,words:'time timer stopwatch'},
- {id:'games',title:'Games',description:'Small games for a break',category:'Entertainment',color:'#f18fb9',Icon:Gamepad2,words:'snake memory tic tac toe'},
+ {id:'games',title:'Games',description:'A bigger collection of casual games',category:'Entertainment',color:'#f18fb9',Icon:Gamepad2,words:'snake memory tic tac toe 2048 minesweeper'},
+ {id:'code',title:'Code Studio',description:'Run HTML, CSS, JavaScript and Python in your browser',category:'Developer',color:'#7eb8ff',Icon:Code2,words:'editor html css javascript python programming code playground'},
+ {id:'documents',title:'Writer',description:'Create and export text documents',category:'Productivity',color:'#74a9ff',Icon:BookText,words:'word processor document writing export txt md'},
+ {id:'music',title:'Media Player',description:'Play audio files you choose',category:'Entertainment',color:'#d18aff',Icon:Music,words:'music mp3 wav audio player playlist'},
  {id:'store',title:'App Library',description:'Explore built-in apps',category:'System',color:'#93a5ff',Icon:ShoppingBag,words:'store install apps'},
  {id:'browser',title:'Web Links',description:'Open useful web destinations',category:'Internet',color:'#6bcdbb',Icon:ExternalLink,words:'browser internet web'},
  {id:'widgets',title:'Widgets',description:'A glance at your day',category:'System',color:'#8ca4bb',Icon:LayoutDashboard,words:'dashboard recent local info'},
@@ -75,6 +79,8 @@ export default function App() {
  const [files,setFiles]=useSaved<VirtualFile[]>('aeroshell.files.v1',seedFiles);
  const [scores,setScores]=useSaved<Record<string,number>>('aeroshell.scores.v1',{});
  const [cells,setCells]=useSaved<Record<string,string>>('aeroshell.cells.v1',{A1:'Item',B1:'Quantity',C1:'Price',A2:'Notebook',B2:'3',C2:'120',A3:'Pen',B3:'5',C3:'25',A4:'Total',C4:'=SUM(C2:C3)'});
+ const [documentContent,setDocumentContent]=useSaved<string>('aeroshell.writer.content.v1','# My document\n\nStart writing here…');
+ const [codeLaunch,setCodeLaunch]=useState<CodeLaunch>(null);
  const [windows,setWindows]=useState<Win[]>([]);
  const [active,setActive]=useState<number|null>(null);
  const [menu,setMenu]=useState<'start'|'search'|'taskview'|'widgets'|'quick'|'notify'|'calendar'|null>(null);
@@ -111,17 +117,20 @@ export default function App() {
   if(id==='calendar')return <CalendarApp events={events} setEvents={setEvents}/>;
   if(id==='calculator')return <CalculatorApp/>;
   if(id==='sheets')return <Sheets cells={cells} setCells={setCells} exportFile={exportFile} importCsv={importCsv}/>;
-  if(id==='explorer')return <Explorer files={files} setFiles={setFiles} openNote={(title,body)=>{setNotes(ns=>[{id:crypto.randomUUID(),title,body,updated:new Date().toISOString()},...ns]);openApp('notes');}} exportFile={exportFile}/>;
+  if(id==='explorer')return <Explorer files={files} setFiles={setFiles} openCode={(name,content,parent)=>{setCodeLaunch({name,content,parent});openApp('code');}} openNote={(title,body)=>{setNotes(ns=>[{id:crypto.randomUUID(),title,body,updated:new Date().toISOString()},...ns]);openApp('notes');}} exportFile={exportFile}/>;
   if(id==='paint')return <Paint/>;
   if(id==='photos')return <Photos/>;
   if(id==='clock')return <ClockApp/>;
   if(id==='games')return <Games scores={scores} setScores={setScores}/>;
+  if(id==='code')return <CodeStudio launch={codeLaunch} saveFile={(name,content,parent)=>setFiles(fs=>{const existing=fs.find(f=>f.parent===parent&&f.name===name&&!f.folder);return existing?fs.map(f=>f.id===existing.id?{...f,content}:f):[...fs,{id:crypto.randomUUID(),name,folder:false,parent,content}];})} exportFile={exportFile}/>;
+  if(id==='documents')return <WriterApp content={documentContent} setContent={setDocumentContent} exportFile={exportFile}/>;
+  if(id==='music')return <MusicPlayer/>;
   if(id==='store')return <div className="app-page"><div className="page-heading"><div><p className="eyebrow">BUILT IN</p><h2>App Library</h2><p>All applications are included locally in AeroShell.</p></div></div><div className="app-catalog">{APPS.filter(a=>a.id!=='store').map(a=><button className="catalog-item" key={a.id} onClick={()=>openApp(a.id)}><AppIcon app={a} size={23}/><span><b>{a.title}</b><small>{a.description}</small></span><ChevronRight size={16}/></button>)}</div></div>;
   if(id==='browser')return <div className="app-page"><p className="eyebrow">QUICK LAUNCHER</p><h2>Web Links</h2><p>Open a destination in your normal browser. External sites may require internet access.</p><div className="link-grid">{[['Search','https://www.google.com'],['Wikipedia','https://www.wikipedia.org'],['YouTube','https://www.youtube.com'],['GitHub','https://github.com'],['Vercel','https://vercel.com'],['MDN Web Docs','https://developer.mozilla.org']].map(([name,url])=><button key={url} className="link-tile" onClick={()=>window.open(url,'_blank','noopener,noreferrer')}><ExternalLink size={19}/><b>{name}</b><small>{url.replace('https://','')}</small></button>)}</div><p className="hint">AeroShell does not intercept or replace your browser's security controls.</p></div>;
   if(id==='widgets')return <div className="app-page"><p className="eyebrow">YOUR DESKTOP</p><h2>Widgets</h2><div className="widget-grid"><div className="widget-card wide"><span className="widget-label">Local time</span><strong className="widget-time">{clock.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</strong><span>{clock.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'})}</span></div><div className="widget-card"><span className="widget-label">Upcoming</span><strong>{events.filter(e=>e.date>=dayKey()).length}</strong><span>saved events</span></div><div className="widget-card"><span className="widget-label">Notes</span><strong>{notes.length}</strong><span>saved locally</span></div><div className="widget-card"><span className="widget-label">Game bests</span><strong>{Object.values(scores).reduce((a,b)=>a+b,0)}</strong><span>combined best-score total</span></div></div><p className="hint">Widgets use data stored in this browser. No live weather or network status is fabricated.</p></div>;
   return <SettingsApp prefs={prefs} changePrefs={changePrefs} runSetup={()=>{setSetupStep(0);setSetupDone(false);}} reset={()=>{if(confirm('Reset AeroShell preferences, notes, calendar, spreadsheet and simulated files? This cannot be undone.')){['aeroshell.prefs.v1','aeroshell.events.v1','aeroshell.notes.v1','aeroshell.cells.v1','aeroshell.files.v1','aeroshell.scores.v1','aeroshell.setup.completed.v1','aeroshell.setup.options.v1'].forEach(k=>localStorage.removeItem(k));location.reload();}}}/>;
  };
- const rootStyle={'--wallpaper':prefs.wallpaper,filter:'brightness('+Math.max(20,Math.min(100,prefs.brightness))+'%)'} as CSSProperties;
+ const rootStyle={'--wallpaper':prefs.wallpaper,filter:'brightness('+Math.max(20,Math.min(100,prefs.brightness))+'%)',backgroundImage:prefs.customWallpaper?'linear-gradient(#08102055,#08102055),url("'+prefs.customWallpaper+'")':undefined,backgroundSize:prefs.customWallpaper?'cover':undefined,backgroundPosition:prefs.customWallpaper?'center':undefined} as CSSProperties;
  const finishSetup=()=>{try{localStorage.setItem('aeroshell.setup.options.v1',JSON.stringify({region:setupRegion,language:setupLanguage,keyboard:setupKeyboard}));}catch{/* browser storage may be disabled */}changePrefs({motion:!setupReduceMotion});setSetupDone(true);};
  if(!setupDone)return <SetupWizard step={setupStep} setStep={setSetupStep} region={setupRegion} setRegion={setSetupRegion} language={setupLanguage} setLanguage={setSetupLanguage} keyboard={setupKeyboard} setKeyboard={setSetupKeyboard} reduceMotion={setupReduceMotion} setReduceMotion={setSetupReduceMotion} progress={setupProgress} setProgress={setSetupProgress} onFinish={finishSetup} onSkip={()=>setSetupDone(true)}/>;
  return <div className={'desktop wallpaper-'+prefs.wallpaper} style={rootStyle} onMouseUp={()=>{drag.current=null;}} onContextMenu={e=>{if((e.target as HTMLElement).closest('.window,.taskbar,.popover,.context-menu'))return;e.preventDefault();setCtx({x:e.clientX,y:e.clientY});setMenu(null);}}>
