@@ -318,9 +318,10 @@ function ClockApp() {
 type MathQuestion = {prompt:string;answer:number;choices:number[]};
 function createMathQuestion():MathQuestion {
  const op=['+','−','×'][Math.floor(Math.random()*3)];
- const a=op==='×'?Math.floor(Math.random()*12)+2:Math.floor(Math.random()*90)+10;
- const b=op==='×'?Math.floor(Math.random()*12)+2:Math.floor(Math.random()*40)+1;
- const answer=op==='+'?a+b:op==='−'?Math.max(a,b)-Math.min(a,b):a*b;
+ const rawA=op==='×'?Math.floor(Math.random()*12)+2:Math.floor(Math.random()*90)+10;
+ const rawB=op==='×'?Math.floor(Math.random()*12)+2:Math.floor(Math.random()*40)+1;
+ const a=op==='−'?Math.max(rawA,rawB):rawA;const b=op==='−'?Math.min(rawA,rawB):rawB;
+ const answer=op==='+'?a+b:op==='−'?a-b:a*b;
  const values=new Set<number>([answer]);
  while(values.size<4){const offset=Math.floor(Math.random()*19)-9;values.add(Math.max(0,answer+offset+(offset===0?3:0)));}
  return {prompt:a+' '+op+' '+b,answer,choices:Array.from(values).sort(()=>Math.random()-.5)};
