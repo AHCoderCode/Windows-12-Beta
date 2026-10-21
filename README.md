@@ -67,3 +67,20 @@ The application is built as a Vite static site. Vercel should use `npm install` 
 ## Data and accounts
 
 AeroShell has no account system or sign-in requirement. Notes, events, settings, spreadsheet content, virtual files, and game scores are stored in the current browser. That data is not synchronized between devices; clearing browser site data may remove it.
+
+
+## Expanded applications
+
+- **Spreadsheet:** multiple worksheets, up to 16 visible columns and 30 rows in the grid, direct cell editing, CSV import/export, workbook JSON backup, and safe numeric formulas including arithmetic, cell references, SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, PRODUCT, MEDIAN, ROUND, ABS, SQRT, POWER and a numeric IF.
+- **Code Studio:** edit HTML, CSS and JavaScript with a live preview inside a sandboxed iframe; Python runs locally in a separate browser worker through Pyodide. First-time Python execution needs internet to load the runtime. The workspace does not provide a real operating-system shell or direct access to your computer's files.
+- **Virtual File Explorer:** create folders and files, rename or delete items, open editable code files, and save Code Studio files into the virtual filesystem stored by the browser.
+- **Custom wallpaper:** choose an image file in Settings; the image is resized and stored locally in the current browser.
+- **Writer:** write text and export TXT or Markdown files.
+- **Media Player:** play audio files selected by the visitor.
+- **PDF Reader:** preview a selected PDF using the browser's built-in viewer when available.
+- **To Do:** create tasks, set priorities, mark them complete, filter the list and delete tasks.
+- **Games:** Memory, Tic-tac-toe, Snake, 2048 and Minesweeper.
+
+## Browser-only capabilities
+
+AeroShell is a website, not a real Windows installation or native desktop application. It cannot run arbitrary Windows applications, control the actual Windows shell, access the full local filesystem without an explicit file picker, or change hardware settings directly. Browser-local notes, files, workbooks, code, wallpaper preferences and tasks are not synchronized across devices. Python code runs in a Web Worker, and web code runs in a sandboxed iframe.
