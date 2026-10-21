@@ -11,7 +11,7 @@ import { evaluateFormula, shownCell, toColumnLabel } from './formulas';
 import { AppStore, ClipboardHub, FocusSpaces, ThemeGallery, AIStudio, TimeMachine, SandboxTerminal, HealthDashboard, type FeatureFile, type HistorySnapshot, type ShelfItem, type PowerAppDefinition } from './PowerApps';
 
 type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf'|'clipboard'|'focus'|'themes'|'ai-studio'|'time-machine'|'terminal'|'health'|'vexel';
-type AppDef = PowerAppDefinition;
+type AppDef = Omit<PowerAppDefinition,'id'> & {id:AppId};
 type MediaStatus = {playing:boolean;title:string;currentTime:number;duration:number};
 type FluidProgress = {label:string;progress:number};
 type Win = { id: number; app: AppId; x: number; y: number; w: number; h: number; min: boolean; max: boolean };
