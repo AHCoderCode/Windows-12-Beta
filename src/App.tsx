@@ -7,6 +7,7 @@ import {
   ShoppingBag, Smartphone, Sun, Trash2, Undo2, Upload, Volume2, Wifi, X, type LucideIcon
 } from 'lucide-react';
 import './styles.css';
+import { evaluateFormula, shownCell } from './formulas';
 
 type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings';
 type AppDef = { id: AppId; title: string; description: string; category: string; color: string; Icon: LucideIcon; words: string };
@@ -36,41 +37,6 @@ function useSaved<T>(key:string, initial:T) {
  const [value,setValue] = useState<T>(()=>readSaved(key,initial));
  useEffect(()=>{ try { localStorage.setItem(key,JSON.stringify(value)); } catch { /* storage can be disabled */ } },[key,value]);
  return [value,setValue] as const;
-}
-function valueOf(cell:string,cells:Record<string,string>,seen = new Set<string>()):number {
- const key=cell.toUpperCase();
- if(seen.has(key)) throw new Error('Circular reference');
- seen.add(key);
- const raw=cells[key] ?? '';
- if(!raw.startsWith('=')) { const n=Number(raw); return raw.trim()==='' ? 0 : Number.isFinite(n)?n:0; }
- return calc(raw.slice(1),cells,seen);
-}
-function calc(input:string,cells:Record<string,string>,seen = new Set<string>()):number {
- let src=input.trim();
- src=src.replace(/\b(SUM|AVERAGE|MIN|MAX)\(\s*([A-Z]+\d+)\s*:\s*([A-Z]+\d+)\s*\)/gi,(_m,fn,a,b)=>{
-   const ca=a.toUpperCase().match(/^([A-Z]+)(\d+)$/)!, cb=b.toUpperCase().match(/^([A-Z]+)(\d+)$/)!;
-   const col=(s:string)=>{let n=0;for(const ch of s)n=n*26+ch.charCodeAt(0)-64;return n;};
-   const label=(n:number)=>{let out='';while(n){n--;out=String.fromCharCode(65+n%26)+out;n=Math.floor(n/26);}return out;};
-   const nums:number[]=[];
-   for(let row=Math.min(+ca[2],+cb[2]);row<=Math.max(+ca[2],+cb[2]);row++) for(let c=col(ca[1]);c<=col(cb[1]);c++) nums.push(valueOf(label(c)+row,cells,new Set(seen)));
-   const f=String(fn).toUpperCase();
-   if(f==='SUM')return String(nums.reduce((x,y)=>x+y,0));
-   if(f==='AVERAGE')return String(nums.length?nums.reduce((x,y)=>x+y,0)/nums.length:0);
-   if(f==='MIN')return String(nums.length?Math.min(...nums):0);
-   return String(nums.length?Math.max(...nums):0);
- });
- src=src.replace(/\b([A-Z]{1,3}\d{1,4})\b/gi,(_m,ref)=>String(valueOf(String(ref),cells,new Set(seen))));
- const tokens=src.match(/\d+(?:\.\d+)?|[()+\-*/]/g);
- if(!tokens || tokens.join('')!==src.replace(/\s/g,'')) throw new Error('Unsupported formula');
- let i=0;
- const factor=():number=>{const t=tokens[i++];if(t==='+')return factor();if(t==='-')return -factor();if(t==='('){const n=expr();if(tokens[i++]!==')')throw new Error('Missing )');return n;}const n=Number(t);if(!Number.isFinite(n))throw new Error('Invalid number');return n;};
- const term=():number=>{let n=factor();while(tokens[i]==='*'||tokens[i]==='/'){const op=tokens[i++],b=factor();if(op==='/'&&b===0)throw new Error('Division by zero');n=op==='*'?n*b:n/b;}return n;};
- const expr=():number=>{let n=term();while(tokens[i]==='+'||tokens[i]==='-'){const op=tokens[i++],b=term();n=op==='+'?n+b:n-b;}return n;};
- const result=expr();if(i!==tokens.length||!Number.isFinite(result))throw new Error('Invalid formula');return result;
-}
-function shownCell(cell:string,cells:Record<string,string>):string {
- const v=cells[cell]??'';if(!v.startsWith('='))return v;
- try { const n=calc(v.slice(1),cells,new Set([cell]));return String(Number(n.toFixed(8))); } catch(e) { return '#ERROR'; }
 }
 const seedFiles:VirtualFile[]=[
  {id:'root-docs',name:'Documents',folder:true,parent:'root'},
@@ -175,7 +141,7 @@ function MiniCalendar({events,openCalendar}:{events:EventItem[];openCalendar:()=
 
 function CalculatorApp() {
  const [display,setDisplay]=useState('0');const [expr,setExpr]=useState('');const [fresh,setFresh]=useState(true);
- const press=(v:string)=>{if(v==='AC'){setDisplay('0');setExpr('');setFresh(true);return;}if(v==='⌫'){setDisplay(s=>s.length>1?s.slice(0,-1):'0');return;}if(v==='±'){setDisplay(s=>String(-Number(s)));return;}if(v==='%'){setDisplay(s=>String(Number(s)/100));return;}if(v==='='){const full=expr+display;try{const out=calc(full,{});setExpr('');setDisplay(String(Number(out.toFixed(8))));setFresh(true);}catch{setDisplay('Error');setExpr('');setFresh(true);}return;}if(['+','−','×','÷'].includes(v)){setExpr((expr?expr:'')+display+({'+' :'+','−':'-','×':'*','÷':'/'} as Record<string,string>)[v]);setDisplay('0');setFresh(true);return;}if(v==='.') {setDisplay(s=>s.includes('.')?s:s+'.');setFresh(false);return;}setDisplay(s=>fresh||s==='0'?v:s+v);setFresh(false);};
+ const press=(v:string)=>{if(v==='AC'){setDisplay('0');setExpr('');setFresh(true);return;}if(v==='⌫'){setDisplay(s=>s.length>1?s.slice(0,-1):'0');return;}if(v==='±'){setDisplay(s=>String(-Number(s)));return;}if(v==='%'){setDisplay(s=>String(Number(s)/100));return;}if(v==='='){const full=expr+display;try{const out=evaluateFormula(full,{});setExpr('');setDisplay(String(Number(out.toFixed(8))));setFresh(true);}catch{setDisplay('Error');setExpr('');setFresh(true);}return;}if(['+','−','×','÷'].includes(v)){setExpr((expr?expr:'')+display+({'+' :'+','−':'-','×':'*','÷':'/'} as Record<string,string>)[v]);setDisplay('0');setFresh(true);return;}if(v==='.') {setDisplay(s=>s.includes('.')?s:s+'.');setFresh(false);return;}setDisplay(s=>fresh||s==='0'?v:s+v);setFresh(false);};
  const keys=['AC','±','%','÷','7','8','9','×','4','5','6','−','1','2','3','+','⌫','0','.','='];
  return <div className="calculator-app"><div className="calc-display"><span>{expr.replaceAll('*','×').replaceAll('/','÷')||'Calculator'}</span><strong>{display}</strong></div><div className="calc-grid">{keys.map((k,i)=><button key={i} className={(i%4===3||k==='=')?'operator '+(k==='='?'equals':''):(['AC','±','%','⌫'].includes(k)?'calc-utility':'')} onClick={()=>press(k)}>{k}</button>)}</div><p className="hint">Keyboard input is supported for digits and basic operators.</p></div>;
 }
