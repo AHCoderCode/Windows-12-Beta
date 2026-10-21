@@ -349,7 +349,22 @@ function CodeStudio({launch,saveFile,exportFile}:{launch:CodeLaunch;saveFile:(na
  useEffect(()=>{const onMessage=(event:MessageEvent)=>{if(event.source!==previewRef.current?.contentWindow||!event.data?.aeroShellConsole)return;setPreviewOutput(lines=>[...lines,{kind:String(event.data.kind??'log'),text:Array.isArray(event.data.args)?event.data.args.join(' '):String(event.data.args??'')}].slice(-80));};window.addEventListener('message',onMessage);return()=>window.removeEventListener('message',onMessage);},[]);
  useEffect(()=>()=>{workerRef.current?.terminate();},[]);
  const safeScript=(source:string)=>source.replace(/<\/script/gi,'<\\/script');
- const previewDocument=useMemo(()=>{const bridge=`(()=>{const report=(kind,args)=>parent.postMessage({aeroShellConsole:true,kind,args:args.map(v=>{try{return typeof v==="string"?v:JSON.stringify(v)}catch{return String(v)}})},"*");["log","info","warn","error"].forEach(k=>{const original=console[k];console[k]=(...args)=>{report(k,args);original.apply(console,args)}});window.onerror=(message)=>report("error",[message]);})();`;return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style></head><body>'+html+'<script>'+bridge+'</scr'+'ipt><script>'+safeScript(js)+'</scr'+'ipt></body></html>';},[html,css,js,previewRevision]);
+ const safeStyle=(source:string)=>source.replace(/<\/style/gi,'<\\/style');
+ const previewDocument=useMemo(()=>{
+  const bridge=\`(()=>{const report=(kind,args)=>parent.postMessage({aeroShellConsole:true,kind,args:args.map(v=>{try{return typeof v==="string"?v:JSON.stringify(v)}catch{return String(v)}})},"*");["log","info","warn","error"].forEach(k=>{const original=console[k];console[k]=(...args)=>{report(k,args);original.apply(console,args)}});window.onerror=(message)=>report("error",[message]);})();\`;
+  const scripts='<script>'+bridge+'</scr'+'ipt><script>'+safeScript(js)+'</scr'+'ipt>';
+  if(/<!doctype|<html[\s>]/i.test(html)){
+   let documentHtml=html;
+   const styleTag='<style>'+safeStyle(css)+'</style>';
+   if(/<\/head>/i.test(documentHtml))documentHtml=documentHtml.replace(/<\/head>/i,styleTag+'</head>');
+   else if(/<html[^>]*>/i.test(documentHtml))documentHtml=documentHtml.replace(/<html([^>]*)>/i,'<html$1><head>'+styleTag+'</head>');
+   else documentHtml=styleTag+documentHtml;
+   if(/<\/body>/i.test(documentHtml))documentHtml=documentHtml.replace(/<\/body>/i,scripts+'</body>');
+   else documentHtml+=scripts;
+   return documentHtml;
+  }
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+safeStyle(css)+'</style></head><body>'+html+scripts+'</body></html>';
+ },[html,css,js,previewRevision]);
  const activeCode=tab==='html'?html:tab==='css'?css:tab==='js'?js:python;
  const activeName=tab==='html'?'index.html':tab==='css'?'styles.css':tab==='js'?'script.js':'main.py';
  const updateCode=(value:string)=>{if(tab==='html')setHtml(value);else if(tab==='css')setCss(value);else if(tab==='js')setJs(value);else setPython(value);};
