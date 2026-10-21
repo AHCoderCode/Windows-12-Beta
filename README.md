@@ -54,3 +54,16 @@ AeroShell is a browser simulation, not native Windows. The built-in formula gram
 ## Development conventions
 
 See AGENTS.md for project architecture and coding standards.
+
+
+## Opening the website
+
+Visitors only need to open the public website in a modern browser. They do not need Git, Node.js, a terminal, build commands, an email address, or an account. The first-run setup is a browser simulation; it does not install Windows or modify the visitor's computer.
+
+## Deployment
+
+The application is built as a Vite static site. Vercel should use `npm install` for installation, `npm run build` for the build command, and `dist` as the output directory. The production branch should be `main`. Once this pull request is merged and the repository is connected to Vercel with automatic deployments enabled, updates merged into `main` can deploy automatically.
+
+## Data and accounts
+
+AeroShell has no account system or sign-in requirement. Notes, events, settings, spreadsheet content, virtual files, and game scores are stored in the current browser. That data is not synchronized between devices; clearing browser site data may remove it.
