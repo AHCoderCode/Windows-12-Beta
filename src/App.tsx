@@ -351,7 +351,7 @@ function CodeStudio({launch,saveFile,exportFile}:{launch:CodeLaunch;saveFile:(na
  const safeScript=(source:string)=>source.replace(/<\/script/gi,'<\\/script');
  const safeStyle=(source:string)=>source.replace(/<\/style/gi,'<\\/style');
  const previewDocument=useMemo(()=>{
-  const bridge=\`(()=>{const report=(kind,args)=>parent.postMessage({aeroShellConsole:true,kind,args:args.map(v=>{try{return typeof v==="string"?v:JSON.stringify(v)}catch{return String(v)}})},"*");["log","info","warn","error"].forEach(k=>{const original=console[k];console[k]=(...args)=>{report(k,args);original.apply(console,args)}});window.onerror=(message)=>report("error",[message]);})();\`;
+  const bridge=`(()=>{const report=(kind,args)=>parent.postMessage({aeroShellConsole:true,kind,args:args.map(v=>{try{return typeof v==="string"?v:JSON.stringify(v)}catch{return String(v)}})},"*");["log","info","warn","error"].forEach(k=>{const original=console[k];console[k]=(...args)=>{report(k,args);original.apply(console,args)}});window.onerror=(message)=>report("error",[message]);})();`;
   const scripts='<script>'+bridge+'</scr'+'ipt><script>'+safeScript(js)+'</scr'+'ipt>';
   if(/<!doctype|<html[\s>]/i.test(html)){
    let documentHtml=html;
