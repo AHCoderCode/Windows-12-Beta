@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "AeroShell Desktop",
+  "short_name": "AeroShell",
+  "description": "An original Windows-inspired desktop environment for the web.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111a2b",
+  "theme_color": "#111a2b",
+  "categories": ["productivity", "utilities", "games"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
