@@ -1,0 +1,50 @@
+name: Expand and verify AeroShell
+on:
+  push:
+    branches: [feature/aeroshell-desktop]
+    paths:
+      - aeroshell-source.tar.gz.b64
+  workflow_dispatch:
+    branches: [feature/aeroshell-desktop]
+
+permissions:
+  contents: write
+
+jobs:
+  expand-build-test:
+    if: github.ref == 'refs/heads/feature/aeroshell-desktop'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Expand source archive and commit actual files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f aeroshell-source.tar.gz.b64 ]]; then
+            echo "Source archive was already expanded."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/aeroshell-source"
+          base64 --decode aeroshell-source.tar.gz.b64 | tar -xz -C "$RUNNER_TEMP/aeroshell-source"
+          rsync -a "$RUNNER_TEMP/aeroshell-source/" ./
+          rm aeroshell-source.tar.gz.b64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Build AeroShell Desktop implementation"
+          git push origin "$GITHUB_REF_NAME"
+      - name: Install dependencies
+        run: npm install
+      - name: Run unit tests
+        run: npm test
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Build production application
+        run: npm run build
