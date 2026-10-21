@@ -1,0 +1,42 @@
+name: Verify AeroShell
+on:
+  push:
+    branches: [main, feature/aeroshell-desktop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Summarize dependency audit
+        shell: bash
+        run: |
+          npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
+          node - "$RUNNER_TEMP/npm-audit.json" <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          console.log('Dependency audit totals:', JSON.stringify(report.metadata?.vulnerabilities ?? {}));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            const advisories = (item.via ?? []).filter(v => typeof v === 'object').map(v => v.title);
+            console.log(`${name}: severity=${item.severity}; range=${item.range}; fixAvailable=${JSON.stringify(item.fixAvailable)}; advisories=${advisories.join(' | ')}`);
+          }
+          NODE
+      - name: Run unit tests
+        run: npm test
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Build production app
+        run: npm run build
