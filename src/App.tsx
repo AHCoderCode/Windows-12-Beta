@@ -120,7 +120,7 @@ export default function App() {
   if(id==='notes')return <Notes notes={notes} setNotes={setNotes}/>;
   if(id==='calendar')return <CalendarApp events={events} setEvents={setEvents}/>;
   if(id==='calculator')return <CalculatorApp/>;
-  if(id==='sheets')return <Sheets cells={cells} setCells={setCells} exportFile={exportFile} importCsv={importCsv}/>;
+  if(id==='sheets')return <Sheets cells={cells} setCells={setCells} exportFile={exportFile}/>;
   if(id==='explorer')return <Explorer files={files} setFiles={setFiles} openCode={(name,content,parent)=>{setCodeLaunch({name,content,parent});openApp('code');}} openNote={(title,body)=>{setNotes(ns=>[{id:crypto.randomUUID(),title,body,updated:new Date().toISOString()},...ns]);openApp('notes');}} exportFile={exportFile}/>;
   if(id==='paint')return <Paint/>;
   if(id==='photos')return <Photos/>;
