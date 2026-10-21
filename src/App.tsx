@@ -47,7 +47,7 @@ const seedFiles:VirtualFile[]=[
  {id:'budget',name:'Budget.csv',folder:false,parent:'root-work',content:'Item,Amount\nBooks,1200\nSupplies,850\nOther,300'}
 ];
 function AppIcon({app,size=20}:{app:AppDef;size?:number}) { const I=app.Icon;return <span className="app-icon" style={{background:app.color}}><I size={size} strokeWidth={1.8}/></span>; }
-function App() {
+export default function App() {
  const [prefs,setPrefs]=useSaved<Prefs>('aeroshell.prefs.v1',{theme:'dark',accent:'#8c94ff',wallpaper:'aurora',transparency:84,motion:true,username:'Guest',wifi:true,bluetooth:false,airplane:false,volume:65,brightness:90});
  const [events,setEvents]=useSaved<EventItem[]>('aeroshell.events.v1',[]);
  const [notes,setNotes]=useSaved<NoteItem[]>('aeroshell.notes.v1',[]);
