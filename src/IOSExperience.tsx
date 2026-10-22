@@ -92,7 +92,8 @@ export function IOSExperience({
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const longPressedRef = useRef(false);
-  const indicatorSwipe = useRef<{ y: number; moved: boolean } | null>(null);
+  const indicatorSwipe = useRef<{ y: number } | null>(null);
+  const didSwipeHomeIndicator = useRef(false);
 
   const installedApps = useMemo(
     () => apps.filter(app => installed.includes(app.id)),
@@ -106,7 +107,7 @@ export function IOSExperience({
     return !needle || [app.title, app.description, normalizeAppCategory(app.id, app.category)].join(' ').toLocaleLowerCase().includes(needle);
   }), [apps, installed, installedOnly, libraryCategory, libraryQuery]);
   const activeAppDef = apps.find(app => app.id === activeApp);
-  const wallpaperClass = WALLPAPERS.find(item => item.id === iosPrefs.wallpaper)?.className ?? 'ios-wallpaper-aurora';
+  const wallpaperClass = iosPrefs.wallpaper==='custom'?'ios-wallpaper-custom':WALLPAPERS.find(item => item.id === iosPrefs.wallpaper)?.className ?? 'ios-wallpaper-aurora';
   const dockIds = useMemo(() => {
     const pinned = ['store', 'explorer', 'settings', 'notes', 'calculator', 'paint', 'games', 'browser'];
     return pinned.filter(id => installed.includes(id)).slice(0, 5);
@@ -143,8 +144,10 @@ export function IOSExperience({
 
   const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
     if (!iosPrefs.gestures) return;
-    if ((event.target as HTMLElement).closest('button,input,textarea,select,a,.ios-home-indicator,.ios-panel-overlay,.ios-home-scroll')) return;
-    gesture.current = { x: event.clientX, y: event.clientY, target: (event.target as HTMLElement).closest('.ios-icon-grid') ? 'grid' : 'background' };
+    const target = event.target as HTMLElement;
+    const onGrid = Boolean(target.closest('.ios-icon-grid'));
+    if (target.closest('input,textarea,select,a,.ios-home-indicator,.ios-panel-overlay,.ios-home-scroll') || (target.closest('button') && !onGrid)) return;
+    gesture.current = { x: event.clientX, y: event.clientY, target: onGrid ? 'grid' : 'background' };
   };
   const homeGestureEnd = (event: ReactPointerEvent<HTMLElement>) => {
     if (!iosPrefs.gestures) { gesture.current = null; return; }
@@ -167,14 +170,14 @@ export function IOSExperience({
     if (!start || locked) return;
     if (event.clientY - start.y > 26) showPanel(start.x < window.innerWidth / 2 ? 'notifications' : 'control');
   };
-  const indicatorStart = (event: ReactPointerEvent<HTMLButtonElement>) => { indicatorSwipe.current = { y: event.clientY, moved: false }; };
+  const indicatorStart = (event: ReactPointerEvent<HTMLButtonElement>) => { didSwipeHomeIndicator.current = false; indicatorSwipe.current = { y: event.clientY }; };
   const indicatorEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!iosPrefs.gestures) { indicatorSwipe.current = null; return; }
     const start = indicatorSwipe.current; indicatorSwipe.current = null;
     if (!start) return;
     const delta = event.clientY - start.y;
     if (delta < -105) {
-      start.moved = true;
+      didSwipeHomeIndicator.current = true;
       if (delta < -185) showPanel('switcher');
       else onHome();
     }
@@ -283,7 +286,7 @@ export function IOSExperience({
 
     {locked && <button className="ios-lock-exit" onClick={() => setLocked(false)} aria-label="Unlock AeroShell"><Unlock size={16}/> Unlock</button>}
 
-    <button className={'ios-home-indicator '+(activeApp?'active':'')} aria-label={activeApp?'Return to home screen':'Open home screen'} onPointerDown={indicatorStart} onPointerUp={indicatorEnd} onPointerCancel={()=>{indicatorSwipe.current=null;}} onClick={()=>{if(indicatorSwipe.current?.moved)return;if(panel){setPanel(null);setContextApp(null);}else if(activeApp)onHome();else if(locked)setLocked(false);}}><span/></button>
+    <button className={'ios-home-indicator '+(activeApp?'active':'')} aria-label={activeApp?'Return to home screen':'Open home screen'} onPointerDown={indicatorStart} onPointerUp={indicatorEnd} onPointerCancel={()=>{indicatorSwipe.current=null;}} onClick={()=>{if(didSwipeHomeIndicator.current){didSwipeHomeIndicator.current=false;return;}if(panel){setPanel(null);setContextApp(null);}else if(activeApp)onHome();else if(locked)setLocked(false);}}><span/></button>
     {!activeApp && !locked && <button className="ios-mode-label" onClick={() => onSwitchMode('windows12')} title="Switch back to Windows 12"><Monitor size={13}/> Windows 12</button>}
   </div>;
 }
