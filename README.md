@@ -15,7 +15,7 @@ AeroShell Desktop is an original, Windows-inspired desktop environment that runs
 
 ## Important boundaries
 
-File Explorer displays a simulated filesystem; it cannot silently browse or modify real Windows folders. Import and export require explicit user action. Wi-Fi, Bluetooth, brightness, volume and airplane controls only affect AeroShell's simulated interface. External websites and network-dependent content require connectivity.
+File Explorer includes a virtual filesystem and an optional real-device file panel. Real folders are never scanned silently: the user must choose a folder and grant the browser read/write permission, or choose individual files. Folder access stays in memory for the current session. Browser restrictions differ, especially on mobile. Wi-Fi, Bluetooth, brightness, volume and airplane controls only affect AeroShell's simulated interface. External websites and network-dependent content require connectivity.
 
 ## Requirements and local development
 
@@ -67,3 +67,55 @@ The application is built as a Vite static site. Vercel should use `npm install` 
 ## Data and accounts
 
 AeroShell has no account system or sign-in requirement. Notes, events, settings, spreadsheet content, virtual files, and game scores are stored in the current browser. That data is not synchronized between devices; clearing browser site data may remove it.
+
+
+## Expanded applications
+
+- **Spreadsheet:** multiple worksheets, up to 16 visible columns and 30 rows in the grid, direct cell editing, CSV import/export, workbook JSON backup, and safe numeric formulas including arithmetic, cell references, SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, PRODUCT, MEDIAN, ROUND, ABS, SQRT, POWER and a numeric IF.
+- **Code Studio:** edit HTML, CSS and JavaScript with a live preview inside a sandboxed iframe; Python runs locally in a separate browser worker through Pyodide. First-time Python execution needs internet to load the runtime. The workspace does not provide a real operating-system shell or direct access to your computer's files.
+- **Virtual File Explorer:** create folders/files, rename or delete items, open editable code files, and save Code Studio files into browser storage. Its **Device files** panel can connect to a user-selected folder on supported browsers, list nested entries, edit text/code files, save those edits to the original file, preview images/audio/video/PDFs, and copy small text files into the virtual workspace. Folder handles are session-only; reselect the folder after reloading.
+- **Custom wallpaper:** choose an image file in Settings; the image is resized and stored locally in the current browser.
+- **Writer:** write text and export TXT or Markdown files using the browser's native save picker when available, with a safer download-link fallback.
+- **Markdown Studio:** edit Markdown with a safe live preview, headings, lists, quotes and code blocks, plus `.md` export.
+- **Focus Timer:** run focus, short-break and long-break countdowns and track completed focus sessions locally.
+- **Media Player:** play audio files selected by the visitor.
+- **PDF Reader:** preview a selected PDF using the browser's built-in viewer when available.
+- **To Do:** create tasks, set priorities, mark them complete, filter the list and delete tasks.
+- **Games:** Memory, Tic-tac-toe, Snake, 2048 and Minesweeper.
+
+## Browser-only capabilities
+
+AeroShell is a website, not a real Windows installation or native desktop application. It cannot run arbitrary Windows applications, control the actual Windows shell, access the full local filesystem without an explicit file picker, or change hardware settings directly. Browser-local notes, files, workbooks, code, wallpaper preferences and tasks are not synchronized across devices. Python code runs in a Web Worker, and web code runs in a sandboxed iframe.
+
+
+## Advanced desktop features
+
+### App Store and optional installation
+Core desktop apps are included. Additional apps such as Code Studio, Writer, Media Player, To Do, PDF Reader, Focus Spaces, Theme Studio, AI Studio, Time Machine, Terminal & Script Lab, System Health, and the Vexel AI launcher appear in the in-app Store and must be installed there before launch. This installation process adds the browser app to AeroShell's local installed-app list; it does not install an executable on Windows. Installed app choices persist in the current browser.
+
+### Fluid taskbar and smart tiling
+The floating taskbar shows a compact audio waveform/player status while media is playing and an animated progress indicator for installation, saving, copying into Clipboard Hub, and snapshot restoration. When at least two desktop windows are open, AeroShell offers a side-by-side or stacked snap layout. It remembers locally which app pairs the visitor has snapped before and labels frequently reused pairs as a usual workspace.
+
+### Clipboard Hub
+Clipboard Hub is a local holding shelf for text, URLs, images and small supported files. Visitors can drag items into the shelf, drag shelf cards into File Explorer, Notes, Writer or Code Studio, copy text back to the operating-system clipboard with the browser's permission, and remove individual clips. The shelf is limited to 20 items to reduce browser-storage pressure. Larger selected files are represented as file references/instructions rather than copied wholesale into localStorage.
+
+### Focus Spaces and Theme Studio
+Focus Spaces provide Code, Writing, Deep Work and Relax presets that update the browser desktop's wallpaper, accent, brightness, translucency and motion settings and open relevant apps/folders. Exit Focus restores the previous appearance settings. Theme Studio offers built-in palettes; Settings can additionally import a custom image, resize it and store it locally as a wallpaper.
+
+### AI Studio
+AI Studio offers a UI for a stylized SVG/gradient concept illustration, language-specific starter-code templates and browser canvas upscaling. These are deliberately local simulations; no real image-generation model, AI inference service or photo-reconstruction model is called. Resizing increases pixel dimensions but does not create missing image detail.
+
+### Time Machine
+Time Machine records up to 24 snapshots of the AeroShell virtual file list as it changes. A slider previews a selected snapshot and shows added/removed/edited counts; restoring it replaces the current virtual file list after confirmation. This timeline is local to the current browser and starts tracking from the time snapshots become available; it cannot reconstruct previous real Windows files.
+
+### Terminal & Script Lab
+The terminal is an allowlisted command simulator, not a shell. Supported commands include help, pwd, ls, cat, echo, date, cd, and open; they operate only on the virtual filesystem or AeroShell apps. Commands such as mkdir, touch, rm and cp display a dry-run explanation; they do not execute or alter the host computer. Use Code Studio to run Python with Pyodide or web code in the sandboxed preview.
+
+### System Health dashboard
+The dashboard reports browser storage quota/usage and browser JavaScript heap or battery values only if the browser exposes those APIs. Hardware CPU temperature and total system storage may not be available to websites, and the app displays those limitations instead of fabricating readings.
+
+### Vexel AI
+The App Store includes a launcher and Web Links includes a direct link to https://vexelai-zeta.vercel.app/.
+
+## Browser security and data scope
+AeroShell is not a native Windows shell. It cannot run arbitrary Windows apps, access all laptop files without an explicit file picker, control real Wi-Fi/Bluetooth/volume settings, or mute the host operating system. Local data is not synced across devices. Clipboard images and custom wallpapers are resized before being stored in browser storage. Python execution loads Pyodide from its CDN on first run and executes in a web worker; network access is needed to fetch that runtime.

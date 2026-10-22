@@ -32,6 +32,20 @@ describe('safe spreadsheet formula evaluator', () => {
     expect(shownCell('A1', { A1: '=A1 + 1' })).toBe('#ERROR');
   });
 
+  it('supports additional Excel-style numeric functions', () => {
+    const cells: CellMap = { A1: '2', A2: '4', A3: '6', B1: 'note', C1: '=SUM(A1:A3)' };
+    expect(evaluateFormula('PRODUCT(A1:A3)', cells)).toBe(48);
+    expect(evaluateFormula('MEDIAN(A1:A3)', cells)).toBe(4);
+    expect(evaluateFormula('COUNT(A1:A3)', cells)).toBe(3);
+    expect(evaluateFormula('COUNTA(A1:C1)', cells)).toBe(3);
+    expect(evaluateFormula('ROUND(3.14159, 2)', cells)).toBe(3.14);
+    expect(evaluateFormula('ABS(-9)', cells)).toBe(9);
+    expect(evaluateFormula('SQRT(81)', cells)).toBe(9);
+    expect(evaluateFormula('POWER(2, 5)', cells)).toBe(32);
+    expect(evaluateFormula('IF(A2>=4, 1, 0)', cells)).toBe(1);
+    expect(evaluateFormula('IF(A1>4, 1, 0)', cells)).toBe(0);
+  });
+
   it('converts spreadsheet column numbers', () => {
     expect(toColumnLabel(1)).toBe('A');
     expect(toColumnLabel(26)).toBe('Z');
