@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   Activity, AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Clipboard, Code2,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
@@ -166,6 +166,8 @@ export default function App() {
   if(id==='games')return <Games scores={scores} setScores={setScores}/>;
   if(id==='code')return <CodeStudio launch={codeLaunch} saveFile={saveVirtualFile} exportFile={exportFile}/>;
   if(id==='documents')return <WriterApp content={documentContent} setContent={setDocumentContent} exportFile={exportFile}/>;
+  if(id==='markdown')return <MarkdownStudio exportFile={exportFile}/>;
+  if(id==='pomodoro')return <PomodoroApp/>;
   if(id==='music')return <MusicPlayer onStatus={setMediaStatus}/>;
   if(id==='tasks')return <TasksApp tasks={tasks} setTasks={setTasks}/>;
   if(id==='pdf')return <PdfReader/>;
