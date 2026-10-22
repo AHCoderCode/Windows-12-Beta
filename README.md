@@ -6,7 +6,7 @@ AeroShell Desktop is an original, Windows-inspired desktop environment that runs
 
 - A floating, centered taskbar with app indicators, Start launcher, app search, Task View and desktop context menus.
 - Multi-window interactions including focus, dragging, minimize, maximize, restore and close.
-- Calendar, Notes, Sheets, Calculator, a virtual File Explorer, Paint, Photos, Clock, Games, an App Library, Web Links, Widgets and Settings.
+- **Preinstalled core:** File Explorer, AeroShell Store and Settings. Optional apps—including Calculator, Paint, Clock, Calendar, Spreadsheet, Notes, games and developer tools—are installed from AeroShell Store on demand.
 - Local persistence for settings, events, notes, spreadsheet content, game scores and virtual files.
 - Safe spreadsheet formula handling for arithmetic, cell references, SUM, AVERAGE, MIN and MAX ranges, without executing arbitrary JavaScript.
 - Light, dark and system themes; accent color and wallpaper personalization.
@@ -73,11 +73,14 @@ AeroShell has no account system or sign-in requirement. Notes, events, settings,
 
 - **Spreadsheet:** multiple worksheets, up to 16 visible columns and 30 rows in the grid, direct cell editing, CSV import/export, workbook JSON backup, and safe numeric formulas including arithmetic, cell references, SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, PRODUCT, MEDIAN, ROUND, ABS, SQRT, POWER and a numeric IF.
 - **Code Studio:** edit HTML, CSS and JavaScript with a live preview inside a sandboxed iframe; Python runs locally in a separate browser worker through Pyodide. First-time Python execution needs internet to load the runtime. The workspace does not provide a real operating-system shell or direct access to your computer's files.
-- **Virtual File Explorer:** create folders/files, rename or delete items, open editable code files, and save Code Studio files into browser storage. Its **Device files** panel can connect to a user-selected folder on supported browsers, list nested entries, edit text/code files, save those edits to the original file, preview images/audio/video/PDFs, and copy small text files into the virtual workspace. Folder handles are session-only; reselect the folder after reloading.
+- **File Explorer:** browse the virtual workspace, or use the **Device files** panel to connect to a user-selected folder on supported browsers, list nested entries, edit text/code files, save edits to the real original file, and preview images/audio/video/PDFs. Folder handles are session-only; reselect the folder after reloading.
 - **Custom wallpaper:** choose an image file in Settings; the image is resized and stored locally in the current browser.
 - **Writer:** write text and export TXT or Markdown files using the browser's native save picker when available, with a safer download-link fallback.
 - **Markdown Studio:** edit Markdown with a safe live preview, headings, lists, quotes and code blocks, plus `.md` export.
-- **Focus Timer:** run focus, short-break and long-break countdowns and track completed focus sessions locally.
+- **Clock & Timer:** live local clock, stopwatch, and configurable countdowns with whole-minute and second inputs. Enter one second or a duration such as 2 minutes 30 seconds; a generated multi-tone beep plays when the countdown reaches zero unless sound is turned off.
+- **Focus Timer:** use 25-minute focus, 5-minute short-break or 15-minute long-break presets, or specify any custom duration down to one second (for example, 2 minutes 30 seconds). A generated multi-tone beep plays when the timer reaches zero unless sound is turned off; completed focus sessions are tracked locally.
+- **Unit Converter:** convert length, weight, temperature, speed, data and volume units.
+- **Color Studio:** select colors, browse a curated palette, and copy HEX, RGB or HSL values.
 - **Media Player:** play audio files selected by the visitor.
 - **PDF Reader:** preview a selected PDF using the browser's built-in viewer when available.
 - **To Do:** create tasks, set priorities, mark them complete, filter the list and delete tasks.
@@ -119,3 +122,12 @@ The App Store includes a launcher and Web Links includes a direct link to https:
 
 ## Browser security and data scope
 AeroShell is not a native Windows shell. It cannot run arbitrary Windows apps, access all laptop files without an explicit file picker, control real Wi-Fi/Bluetooth/volume settings, or mute the host operating system. Local data is not synced across devices. Clipboard images and custom wallpapers are resized before being stored in browser storage. Python execution loads Pyodide from its CDN on first run and executes in a web worker; network access is needed to fetch that runtime.
+
+
+## Store-first desktop startup
+
+The launch screen appears when AeroShell starts. It features animated audio-visualizer styling and a short synthesized welcome tune that begins only when the user clicks to enter (browser audio autoplay restrictions apply). Startup sound can be switched off on the launch screen. First-time visitors then see the existing guided setup wizard; returning visitors can launch directly into their saved desktop after the intro.
+
+Only **File Explorer**, **AeroShell Store**, and **Settings** are installed by default. A one-time upgrade migration moves prior default-app lists to this core set without deleting saved app data. The Store itself is pinned and cannot be uninstalled. Optional apps are shown in Discover and Installed views, can be searched by name/category, installed into AeroShell's browser-local app list, opened and uninstalled. No native Windows program is downloaded or installed.
+
+The timer's sound alert uses the Web Audio API after the visitor starts the countdown, which unlocks audio from a user gesture. If sound is disabled or the browser does not support audio, the visible countdown still works. Custom values accept 0–999 whole minutes and 0–59 seconds, with a minimum duration of one second.
