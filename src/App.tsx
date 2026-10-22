@@ -657,6 +657,64 @@ function ColorStudio() {
  return <div className="color-studio-app"><div className="color-studio-header"><p className="eyebrow">DESIGN UTILITIES</p><h2>Color Studio</h2><p>Pick a shade, preview it, and copy color values into your projects.</p></div><div className="color-studio-main"><div className="color-large-preview" style={{background:color}}><div className="color-preview-pill">{color.toUpperCase()}</div></div><div className="color-picker-row"><label><span>Choose color</span><input type="color" value={color} onChange={e=>setColor(e.target.value.toUpperCase())}/></label><label className="color-hex-input"><span>HEX value</span><input value={color} maxLength={7} onChange={e=>{const v=e.target.value.toUpperCase();if(/^#[0-9A-F]{0,6}$/.test(v))setColor(v);}} onBlur={()=>{if(!/^#[0-9A-F]{6}$/.test(color))setColor('#8C94FF');}}/></label></div><section className="color-values">{values.map(([label,value])=><button key={label} onClick={()=>void copy(value)}><span>{label}</span><b>{value}</b><Copy size={13}/></button>)}</section><div className="color-palette-head"><b>Curated palette</b><span>Tap any shade to select it</span></div><div className="color-swatch-grid">{palette.map(value=><button key={value} className={value===color?'selected':''} style={{background:value}} title={value} aria-label={'Choose '+value} onClick={()=>setColor(value)}>{value===color&&<Check size={17} color={['#2A3447','#204E8A'].includes(value)?'#fff':'#111827'}/>}</button>)}</div><p className="color-status" aria-live="polite">{status}</p><p className="hint">Color values are calculated locally; copied values are ready for CSS, HTML and design work.</p></div></div>;
 }
 
+function WorldClock() {
+ const [now,setNow]=useState(new Date());
+ const [format24,setFormat24]=useSaved<boolean>('aeroshell.world-clock.24h.v1',false);
+ useEffect(()=>{const id=window.setInterval(()=>setNow(new Date()),1000);return()=>window.clearInterval(id);},[]);
+ const cities=[
+  {city:'Karachi',country:'Pakistan',zone:'Asia/Karachi',flag:'PK'},
+  {city:'London',country:'United Kingdom',zone:'Europe/London',flag:'GB'},
+  {city:'Dubai',country:'United Arab Emirates',zone:'Asia/Dubai',flag:'AE'},
+  {city:'New York',country:'United States',zone:'America/New_York',flag:'US'},
+  {city:'Los Angeles',country:'United States',zone:'America/Los_Angeles',flag:'US'},
+  {city:'Singapore',country:'Singapore',zone:'Asia/Singapore',flag:'SG'},
+  {city:'Tokyo',country:'Japan',zone:'Asia/Tokyo',flag:'JP'},
+  {city:'Sydney',country:'Australia',zone:'Australia/Sydney',flag:'AU'},
+ ];
+ const time=(zone:string)=>new Intl.DateTimeFormat(undefined,{timeZone:zone,hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:!format24}).format(now);
+ const date=(zone:string)=>new Intl.DateTimeFormat(undefined,{timeZone:zone,weekday:'short',month:'short',day:'numeric'}).format(now);
+ return <div className="world-clock-app"><div className="world-clock-heading"><div><p className="eyebrow">GLOBAL TIMEKEEPING</p><h2>World Clock</h2><p>Keep your local time and teammates' time zones in sync.</p></div><button className={'secondary-button '+(format24?'active':'')} onClick={()=>setFormat24(v=>!v)} aria-pressed={format24}>{format24?'24-hour':'12-hour'}</button></div><article className="world-clock-local"><div className="world-clock-local-icon"><Globe size={22}/></div><div><span>Your device's local time</span><strong>{new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:!format24}).format(now)}</strong><small>{Intl.DateTimeFormat().resolvedOptions().timeZone||'Local timezone'} · {now.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}</small></div></article><div className="world-clock-grid">{cities.map(city=><article className={'world-clock-card '+(city.zone==='Asia/Karachi'?'world-clock-home':'')} key={city.zone}><div className="world-clock-card-top"><span className="world-clock-code">{city.flag}</span><span className="world-clock-city"><b>{city.city}</b><small>{city.country}</small></span>{city.zone==='Asia/Karachi'&&<span className="world-clock-home-badge">PKT</span>}</div><strong>{time(city.zone)}</strong><small>{date(city.zone)}</small></article>)}</div><p className="hint">Times use the browser's built-in time-zone database, including daylight-saving adjustments where applicable.</p></div>;
+}
+
+function TypingSprint() {
+ const passages=[
+  'Great software is built one thoughtful improvement at a time. Clear ideas, steady practice, and small experiments turn difficult problems into useful tools.',
+  'A curious mind keeps learning. Read carefully, build something small, test your work, and improve it with patience. Progress becomes visible when you keep going.',
+  'Technology works best when it helps real people. Good design makes useful things easier to understand, faster to use, and more welcoming on every device.',
+  'The fastest way to grow as a developer is to make projects, discover mistakes, investigate causes, and fix the underlying problem instead of hiding it.',
+ ];
+ const [passageIndex,setPassageIndex]=useState(0);
+ const [typed,setTyped]=useState('');
+ const [startedAt,setStartedAt]=useState<number|null>(null);
+ const [finished,setFinished]=useState(false);
+ const [best,setBest]=useSaved<number>('aeroshell.typing-sprint.best.v1',0);
+ const [now,setNow]=useState(Date.now());
+ const passage=passages[passageIndex%passages.length];
+ useEffect(()=>{if(startedAt===null||finished)return;const id=window.setInterval(()=>setNow(Date.now()),250);return()=>window.clearInterval(id);},[startedAt,finished]);
+ const matches=Array.from(typed).filter((char,index)=>char===passage[index]).length;
+ const accuracy=typed.length?Math.round(matches/typed.length*100):100;
+ const elapsed=startedAt===null?0:Math.max(0,Math.floor(((finished?now:Date.now())-startedAt)/1000));
+ const wpm=elapsed>0?Math.round((matches/5)/(elapsed/60)):0;
+ const handleTyping=(value:string)=>{const next=value.slice(0,passage.length);const start=startedAt??Date.now();if(startedAt===null&&next.length)setStartedAt(start);setTyped(next);if(next.length>=passage.length){setFinished(true);const duration=Math.max(1,(Date.now()-start)/1000);const score=Math.round((passage.length/5)/(duration/60));setBest(previous=>Math.max(previous,score));setNow(Date.now());}};
+ const restart=()=>{setPassageIndex(value=>(value+1)%passages.length);setTyped('');setStartedAt(null);setFinished(false);setNow(Date.now());};
+ return <div className="typing-sprint-app"><div className="typing-heading"><div><p className="eyebrow">PRACTICE & IMPROVE</p><h2>Typing Sprint</h2><p>Build accuracy first. Speed follows with practice.</p></div><span className="typing-keyboard-icon"><Keyboard size={22}/></span></div><div className="typing-stats"><article><span>Speed</span><b>{finished?wpm:startedAt===null?'—':wpm}</b><small>words/min</small></article><article><span>Accuracy</span><b>{typed.length?accuracy+'%':'—'}</b><small>correct characters</small></article><article><span>Time</span><b>{startedAt===null?'0s':elapsed+'s'}</b><small>{finished?'completed':'elapsed'}</small></article><article><span>Personal best</span><b>{best||'—'}</b><small>words/min</small></article></div><section className="typing-passage" aria-label="Text to type">{Array.from(passage).map((char,index)=><span key={index} className={index<typed.length?(typed[index]===char?'typing-correct':'typing-incorrect'):index===typed.length?'typing-current':''}>{char}</span>)}</section><label className="typing-input-label">Type the passage below<textarea value={typed} onChange={e=>handleTyping(e.target.value)} disabled={finished} autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="Tap here and start typing…" rows={4}/></label><div className="typing-footer"><span aria-live="polite">{finished?'Sprint complete! Compare your speed and accuracy, then try another passage.':startedAt===null?'The timer starts with your first keystroke.':typed.length+' / '+passage.length+' characters'}</span><button className="primary-button" onClick={restart}><RotateCcw size={14}/>{finished?'New sprint':'Restart'}</button></div><p className="hint">Typing scores are estimates for practice, not a formal assessment. Your best score is saved in this browser only.</p></div>;
+}
+
+function PasswordKit() {
+ const [length,setLength]=useState(20);
+ const [includeUpper,setIncludeUpper]=useState(true);
+ const [includeLower,setIncludeLower]=useState(true);
+ const [includeNumbers,setIncludeNumbers]=useState(true);
+ const [includeSymbols,setIncludeSymbols]=useState(true);
+ const [password,setPassword]=useState('');
+ const [status,setStatus]=useState('Generated locally. Your password is never sent to a server.');
+ const randomInt=(max:number)=>{if(max<=0)throw new Error('No characters available.');const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);return bytes[0]%max;};
+ const generate=()=>{const groups:string[]=[];if(includeUpper)groups.push('ABCDEFGHJKLMNPQRSTUVWXYZ');if(includeLower)groups.push('abcdefghijkmnopqrstuvwxyz');if(includeNumbers)groups.push('23456789');if(includeSymbols)groups.push('!@#$%^&*()-_=+[]{};:,.?');if(!groups.length){setStatus('Choose at least one character group.');setPassword('');return;}try{const pool=groups.join(''),chars=groups.map(group=>group[randomInt(group.length)]);while(chars.length<length)chars.push(pool[randomInt(pool.length)]);for(let i=chars.length-1;i>0;i--){const j=randomInt(i+1);[chars[i],chars[j]]=[chars[j],chars[i]];}setPassword(chars.slice(0,length).join(''));setStatus('Generated locally. Your password is never sent to a server.');}catch{setStatus('Secure random generation is unavailable in this browser. Use a current browser over HTTPS.');setPassword('');}};
+ useEffect(()=>{generate();},[]);
+ const copy=async()=>{if(!password)return;try{await navigator.clipboard.writeText(password);setStatus('Password copied to your clipboard. Avoid sharing it in public or saving it in an untrusted place.');}catch{setStatus('Clipboard access was blocked. Select the password and copy it manually.');}};
+ return <div className="password-kit-app"><div className="password-kit-heading"><span className="password-kit-icon"><KeyRound size={23}/></span><div><p className="eyebrow">DEVICE-LOCAL SECURITY TOOL</p><h2>Password Kit</h2><p>Generate random passwords in this browser.</p></div></div><section className="password-output"><label htmlFor="generated-password">Generated password</label><textarea id="generated-password" value={password} readOnly rows={2} spellCheck={false}/><div className="password-strength"><span>{password.length} characters</span><span>{password.length>=16?'Long password':password.length>=12?'Good length':'Short password'}</span></div><div className="password-actions"><button className="primary-button" onClick={generate}><RotateCcw size={14}/> Generate new</button><button className="secondary-button" onClick={()=>void copy()} disabled={!password}><Copy size={14}/> Copy password</button></div></section><label className="password-length"><span>Length <b>{length}</b></span><input type="range" min="8" max="64" value={length} onChange={e=>setLength(Number(e.target.value))}/><span className="password-length-ends"><small>8</small><small>64</small></span></label><div className="password-options"><label><input type="checkbox" checked={includeUpper} onChange={e=>setIncludeUpper(e.target.checked}/> Uppercase letters (A–Z)</label><label><input type="checkbox" checked={includeLower} onChange={e=>setIncludeLower(e.target.checked}/> Lowercase letters (a–z)</label><label><input type="checkbox" checked={includeNumbers} onChange={e=>setIncludeNumbers(e.target.checked}/> Numbers (2–9)</label><label><input type="checkbox" checked={includeSymbols} onChange={e=>setIncludeSymbols(e.target.checked}/> Symbols</label></div><p className="password-status" role="status">{status}</p><p className="hint">Use a unique password for each account. AeroShell does not store generated passwords, but copying one places it on your device's clipboard.</p></div>;
+}
+
 function MusicPlayer({onStatus}:{onStatus:(status:MediaStatus)=>void}) {
  const [tracks,setTracks]=useState<{name:string;url:string}[]>([]);const [current,setCurrent]=useState(0);const urls=useRef<string[]>([]);const audioRef=useRef<HTMLAudioElement>(null);
  useEffect(()=>{const toggle=()=>{const audio=audioRef.current;if(!audio)return;if(audio.paused)void audio.play().catch(()=>{});else audio.pause();};window.addEventListener('aeroshell-media-toggle',toggle);return()=>window.removeEventListener('aeroshell-media-toggle',toggle);},[]);
