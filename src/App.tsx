@@ -166,7 +166,7 @@ export default function App() {
    }));
   };
   const up=()=>{drag.current=null;};
-  const resize=()=>{setWindows(list=>list.map(w=>w.max? w : {...w,...clampWindowFrame(w,window.innerWidth,window.innerHeight)}));};
+  const resize=()=>{setWindows(list=>list.map(w=>window.innerWidth<=620?{...w,max:true}:{...w,...clampWindowFrame(w,window.innerWidth,window.innerHeight)}));};
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);window.addEventListener('resize',resize);
   return()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);window.removeEventListener('resize',resize);};
  },[]);
