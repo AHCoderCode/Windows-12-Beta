@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import { clampWindowFrame, createInitialWindowFrame, migrateInstalledApps } from './shell-utils';
+import { createMineLayout, createSnakeFood, has2048Moves, mineNeighbors, move2048, paintStrokeStyle, spawn2048, type Direction2048 } from './game-utils';
+import { IOSExperience, IOSSettingsApp, type IOSPrefs } from './IOSExperience';
 import { listUserUploads, removeUserUpload, saveUserUpload } from './media-vault';
 import { RealFilesPanel } from './RealFiles';
 import { evaluateFormula, shownCell, toColumnLabel } from './formulas';
@@ -15,6 +17,8 @@ import { AppStore, ClipboardHub, FocusSpaces, ThemeGallery, AIStudio, TimeMachin
 
 type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf'|'clipboard'|'focus'|'themes'|'ai-studio'|'time-machine'|'terminal'|'health'|'vexel'|'markdown'|'pomodoro'|'unit-converter'|'color-studio'|'world-clock'|'typing-sprint'|'password-kit';
 type AppDef = Omit<PowerAppDefinition,'id'> & {id:AppId};
+type OperatingMode = 'windows12'|'ios27';
+const DEFAULT_IOS_PREFS:IOSPrefs={wallpaper:'aurora',doNotDisturb:false,notifications:true,gestures:true,showBatteryPercent:true};
 type MediaStatus = {playing:boolean;title:string;currentTime:number;duration:number};
 type FluidProgress = {label:string;progress:number};
 type Win = { id: number; app: AppId; x: number; y: number; w: number; h: number; min: boolean; max: boolean };
@@ -108,6 +112,10 @@ export default function App() {
  const [codeLaunch,setCodeLaunch]=useState<CodeLaunch>(null);
  const [tasks,setTasks]=useSaved<TaskItem[]>('aeroshell.tasks.v1',[]);
  const [installedApps,setInstalledApps]=useSaved<AppId[]>('aeroshell.installed.apps.v1',DEFAULT_INSTALLED_APPS);
+ const defaultOperatingMode:OperatingMode=typeof window!=='undefined'&&window.matchMedia('(max-width:700px) and (pointer:coarse)').matches?'ios27':'windows12';
+ const [osMode,setOsMode]=useSaved<OperatingMode>('aeroshell.operating.mode.v1',defaultOperatingMode);
+ const [activeIosApp,setActiveIosApp]=useState<AppId|null>(null);
+ const [iosPrefs,setIosPrefs]=useSaved<IOSPrefs>('aeroshell.ios27.prefs.v1',DEFAULT_IOS_PREFS);
  const [introDone,setIntroDone]=useState(false);
  const [startupSoundEnabled,setStartupSoundEnabled]=useSaved<boolean>('aeroshell.startup.sound.v1',true);
  const startupAudioRef=useRef<AudioContext|null>(null);
