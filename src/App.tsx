@@ -115,6 +115,7 @@ export default function App() {
  const defaultOperatingMode:OperatingMode=typeof window!=='undefined'&&window.matchMedia('(max-width:700px) and (pointer:coarse)').matches?'ios27':'windows12';
  const [osMode,setOsMode]=useSaved<OperatingMode>('aeroshell.operating.mode.v1',defaultOperatingMode);
  const [activeIosApp,setActiveIosApp]=useState<AppId|null>(null);
+ const windowsModeBackup=useRef<{windows:Win[];active:number|null}|null>(null);
  const [iosPrefs,setIosPrefs]=useSaved<IOSPrefs>('aeroshell.ios27.prefs.v1',DEFAULT_IOS_PREFS);
  const [introDone,setIntroDone]=useState(false);
  const [startupSoundEnabled,setStartupSoundEnabled]=useSaved<boolean>('aeroshell.startup.sound.v1',true);
@@ -187,7 +188,7 @@ export default function App() {
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);window.addEventListener('resize',resize);
   return()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);window.removeEventListener('resize',resize);};
  },[]);
- const switchOperatingMode=(mode:OperatingMode)=>{setOsMode(mode);setActiveIosApp(null);setMenu(null);setCtx(null);setWindows(list=>list.map(w=>({...w,min:true})));};
+ const switchOperatingMode=(mode:OperatingMode)=>{if(mode===osMode)return;setMenu(null);setCtx(null);if(mode==='ios27'){const current=windows.find(w=>w.id===active&&!w.min)?.app??null;windowsModeBackup.current={windows,active};setOsMode(mode);setActiveIosApp(current);setWindows(list=>list.map(w=>({...w,min:!current||w.app!==current})));}else{const backup=windowsModeBackup.current;setOsMode(mode);setActiveIosApp(null);if(backup){const ids=new Set(backup.windows.map(w=>w.id));const added=windows.filter(w=>!ids.has(w.id)).map(w=>({...w,min:true}));const merged=[...backup.windows,...added];const nextActive=backup.active&&merged.some(w=>w.id===backup.active)?backup.active:active;const nextList=merged.map(w=>({...w,min:w.id===nextActive?false:w.min}));setWindows(nextList);setActive(nextActive);}else{setWindows(list=>list.map(w=>({...w,min:true})));}windowsModeBackup.current=null;}};
  const changeIosPrefs=(patch:Partial<IOSPrefs>)=>setIosPrefs(current=>({...current,...patch}));
  const resetIosSettings=()=>{if(!confirm('Reset iOS 27 appearance, gesture, sound and notification preferences? Your documents, drawings, installed apps and game progress will be kept.'))return;setIosPrefs(DEFAULT_IOS_PREFS);changePrefs({theme:'dark',accent:'#8c94ff',volume:100,brightness:100,wifi:true,bluetooth:false,airplane:false,motion:true});};
  const openApp=useCallback((id:AppId)=>{
@@ -285,7 +286,7 @@ export default function App() {
   {toast&&<div className="toast"><Check size={17}/>{toast}</div>}
   {!windows.length&&<div className="welcome-chip"><span className="online-dot"/> AeroShell Desktop <span>•</span> Ready for you</div>}
   <div className="desktop-bottom-actions"><button className="switch-mode-shortcut" onClick={()=>switchOperatingMode('ios27')}><Smartphone size={15}/>Try iOS 27</button><button onClick={()=>installEvent?installEvent.prompt():notice('In Chrome or Edge, use the install icon in the address bar or browser menu.')}><Smartphone size={15}/>{installEvent?'Install AeroShell':'Install app'}</button><span>Local-first · v0.1 beta</span></div>
-  {osMode==='ios27'&&setupDone&&introDone&&<IOSExperience apps={APPS} installed={installedApps} runningApps={windows} activeApp={activeIosApp} activeWindowId={windows.find(w=>w.app===activeIosApp&&!w.min)?.id??null} clock={clock} iosPrefs={iosPrefs} sharedPrefs={prefs} onUpdateIOSPrefs={changeIosPrefs} onUpdateSharedPrefs={changePrefs} onLaunchApp={value=>openApp(value as AppId)} onHome={()=>{setActiveIosApp(null);setWindows(list=>list.map(w=>({...w,min:true})));}} onSwitchApp={(windowId,appId)=>{setActiveIosApp(appId as AppId);setActive(windowId);setWindows(list=>list.map(w=>({...w,min:w.id!==windowId})));}} onCloseApp={(windowId,appId)=>{closeWin(windowId);if(activeIosApp===appId)setActiveIosApp(null);}} onSwitchMode={switchOperatingMode}/>}
+  {osMode==='ios27'&&setupDone&&introDone&&<IOSExperience apps={APPS} installed={installedApps} runningApps={windows} activeApp={activeIosApp} clock={clock} iosPrefs={iosPrefs} sharedPrefs={prefs} onUpdateIOSPrefs={changeIosPrefs} onUpdateSharedPrefs={changePrefs} onLaunchApp={value=>openApp(value as AppId)} onHome={()=>{setActiveIosApp(null);setWindows(list=>list.map(w=>({...w,min:true})));}} onSwitchApp={(windowId,appId)=>{setActiveIosApp(appId as AppId);setActive(windowId);setWindows(list=>list.map(w=>({...w,min:w.id!==windowId})));}} onCloseApp={(windowId,appId)=>{closeWin(windowId);if(activeIosApp===appId)setActiveIosApp(null);}} onSwitchMode={switchOperatingMode}/>}
  </div>;
 }
 
