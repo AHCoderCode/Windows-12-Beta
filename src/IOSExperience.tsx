@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  Activity, AppWindow, ArrowLeft, ArrowRight, BatteryFull, Bell, Bluetooth, Check, ChevronDown, ChevronLeft,
-  ChevronRight, Clock3, Cloud, Folder, Grid2X2, Home, Keyboard, KeyRound, Lock, Moon, Palette, Power, Search,
-  Settings, ShieldCheck, Smartphone, Sun, Unlock, Volume2, Wifi, X
+  AppWindow, ArrowRight, BatteryFull, Bell, Bluetooth, Check, ChevronRight, Clock3, Grid2X2, Home, Lock, Moon,
+  Monitor, Power, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sun, Unlock, Volume2, Wifi, X
 } from 'lucide-react';
 import { getAppCategories, normalizeAppCategory } from './app-catalog';
 
@@ -40,7 +39,6 @@ type IOSExperienceProps = {
   installed: string[];
   runningApps: IOSRunningApp[];
   activeApp: string | null;
-  activeWindowId: number | null;
   clock: Date;
   iosPrefs: IOSPrefs;
   sharedPrefs: IOSSharedPrefs;
@@ -81,7 +79,7 @@ const formatClock = (date: Date, hour12 = false) =>
   date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12 });
 
 export function IOSExperience({
-  apps, installed, runningApps, activeApp, activeWindowId, clock, iosPrefs, sharedPrefs,
+  apps, installed, runningApps, activeApp, clock, iosPrefs, sharedPrefs,
   onUpdateIOSPrefs, onUpdateSharedPrefs, onLaunchApp, onHome, onSwitchApp, onCloseApp, onSwitchMode,
 }: IOSExperienceProps) {
   const [panel, setPanel] = useState<'library' | 'control' | 'notifications' | 'switcher' | 'icon-menu' | null>(null);
@@ -91,8 +89,6 @@ export function IOSExperience({
   const [page, setPage] = useState(0);
   const [locked, setLocked] = useState(false);
   const [contextApp, setContextApp] = useState<string | null>(null);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [customWallpaperError, setCustomWallpaperError] = useState('');
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const longPressedRef = useRef(false);
@@ -146,10 +142,12 @@ export function IOSExperience({
   }, []);
 
   const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!iosPrefs.gestures) return;
     if ((event.target as HTMLElement).closest('button,input,textarea,select,a,.ios-home-indicator,.ios-panel-overlay,.ios-home-scroll')) return;
     gesture.current = { x: event.clientX, y: event.clientY, target: (event.target as HTMLElement).closest('.ios-icon-grid') ? 'grid' : 'background' };
   };
   const homeGestureEnd = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current;
     gesture.current = null;
     if (!start || panel || locked) return;
@@ -162,14 +160,16 @@ export function IOSExperience({
     }
     if (dy > 75 && start.y < 70) showPanel(start.x < window.innerWidth / 2 ? 'notifications' : 'control');
   };
-  const statusGestureStart = (event: ReactPointerEvent<HTMLDivElement>) => { gesture.current = { x: event.clientX, y: event.clientY, target: 'status' }; };
+  const statusGestureStart = (event: ReactPointerEvent<HTMLDivElement>) => { if (!iosPrefs.gestures) return; gesture.current = { x: event.clientX, y: event.clientY, target: 'status' }; };
   const statusGestureEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current; gesture.current = null;
     if (!start || locked) return;
     if (event.clientY - start.y > 26) showPanel(start.x < window.innerWidth / 2 ? 'notifications' : 'control');
   };
   const indicatorStart = (event: ReactPointerEvent<HTMLButtonElement>) => { indicatorSwipe.current = { y: event.clientY, moved: false }; };
   const indicatorEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!iosPrefs.gestures) { indicatorSwipe.current = null; return; }
     const start = indicatorSwipe.current; indicatorSwipe.current = null;
     if (!start) return;
     const delta = event.clientY - start.y;
@@ -179,37 +179,11 @@ export function IOSExperience({
       else onHome();
     }
   };
-  const chooseWallpaper = async (file: File) => {
-    setCustomWallpaperError('');
-    if (!file.type.startsWith('image/')) { setCustomWallpaperError('Choose an image file.'); return; }
-    const url = URL.createObjectURL(file);
-    try {
-      const image = new Image();
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('The image could not be opened.'));
-        image.src = url;
-      });
-      const scale = Math.min(1, 1600 / image.width, 1600 / image.height);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(image.width * scale));
-      canvas.height = Math.max(1, Math.round(image.height * scale));
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Image processing is unavailable.');
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      onUpdateIOSPrefs({ wallpaper: 'custom', customWallpaper: canvas.toDataURL('image/jpeg', 0.84) });
-    } catch (error) {
-      setCustomWallpaperError(error instanceof Error ? error.message : 'Could not use that image.');
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  };
-
   const shellStyle = {
     '--ios-accent': sharedPrefs.accent,
     '--ios-brightness': Math.max(20, Math.min(100, sharedPrefs.brightness)) / 100,
     backgroundImage: iosPrefs.wallpaper === 'custom' && iosPrefs.customWallpaper ? 'linear-gradient(#07101f22,#07101f44),url("' + iosPrefs.customWallpaper + '")' : undefined,
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+wallpaperClass} style={shellStyle} data-ios-shell="true"
     onPointerDown={homeGestureStart} onPointerUp={homeGestureEnd} onPointerCancel={() => { gesture.current = null; }}>
@@ -238,12 +212,12 @@ export function IOSExperience({
             onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel('icon-menu'); }}
             onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd} onPointerLeave={holdEnd}
             aria-label={'Open '+app.title} title={app.title}>
-            <span className="ios-icon-art" style={{ '--app-color': app.color } as React.CSSProperties}><Icon size={24} strokeWidth={1.8}/></span><span className="ios-app-name">{app.title}</span>
+            <span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24} strokeWidth={1.8}/></span><span className="ios-app-name">{app.title}</span>
           </button>;
         })}
       </div>
       <div className="ios-home-pagination" aria-label="Home screen pages">
-        {Array.from({ length: Math.max(1, Math.ceil(installedApps.length / 20)) }, (_, index) => <button key={index} className={page === index ? 'active' : ''} aria-label={'Go to home page '+(index+1)} onClick={() => setPage(index}/>)}
+        {Array.from({ length: Math.max(1, Math.ceil(installedApps.length / 20)) }, (_, index) => <button key={index} className={page === index ? 'active' : ''} aria-label={'Go to home page '+(index+1)} onClick={() => setPage(index)} />)}
       </div>
       <div className="ios-dock" aria-label="Application dock">
         {dockIds.map(id => { const app = apps.find(item => item.id === id); if (!app) return null; const Icon = app.Icon; return <button key={id} className="ios-dock-icon" aria-label={'Open '+app.title} title={app.title} onClick={() => launch(id)}><span className="ios-icon-art" style={{ '--app-color': app.color } as React.CSSProperties}><Icon size={24}/></span></button>; })}
@@ -269,7 +243,7 @@ export function IOSExperience({
         <header className="ios-panel-heading"><div><span className="ios-panel-grabber"/><h2>{panel==='library'?'App Library':panel==='control'?'Control Center':panel==='notifications'?'Notification Center':panel==='switcher'?'App Switcher':contextApp ? apps.find(app=>app.id===contextApp)?.title : 'App actions'}</h2></div><button className="ios-panel-close" onClick={() => { setPanel(null); setContextApp(null); }} aria-label="Close panel"><X size={17}/></button></header>
 
         {panel==='library' && <>
-          <label className="ios-library-search"><Search size={16}/><input value={libraryQuery} onFocus={()=>setSearchFocused(true)} onBlur={()=>setSearchFocused(false)} onChange={event=>setLibraryQuery(event.target.value)} placeholder="Search all apps" aria-label="Search apps"/></label>
+          <label className="ios-library-search"><Search size={16}/><input value={libraryQuery} onChange={event=>setLibraryQuery(event.target.value)} placeholder="Search all apps" aria-label="Search apps"/></label>
           <div className="ios-library-filters"><div className="ios-category-row"><button className={libraryCategory==='All'?'active':''} onClick={()=>setLibraryCategory('All')}>All</button>{categories.map(category=><button key={category} className={libraryCategory===category?'active':''} onClick={()=>setLibraryCategory(category)}>{category}</button>)}</div><label className="ios-installed-toggle"><input type="checkbox" checked={installedOnly} onChange={event=>setInstalledOnly(event.target.checked)}/>Installed only</label></div>
           <div className="ios-library-grid">{filteredApps.map(app=>{const Icon=app.Icon;const isInstalled=installed.includes(app.id);return <article key={app.id} className="ios-library-app"><button className="ios-library-app-main" onClick={()=>launch(app.id)}><span className="ios-icon-art" style={{'--app-color':app.color} as React.CSSProperties}><Icon size={23}/></span><span><b>{app.title}</b><small>{normalizeAppCategory(app.id,app.category)}</small></span></button><p>{app.description}</p><div className="ios-library-actions">{isInstalled?<button onClick={()=>launch(app.id)}>Open</button>:<button onClick={()=>launch(app.id)}>Get</button>}{isInstalled&&<span><Check size={12}/> Installed</span>}</div></article>;})}{!filteredApps.length&&<div className="ios-empty"><Search size={22}/><b>No matching apps</b><span>Try a different name or category.</span></div>}</div>
         </>}
@@ -284,7 +258,7 @@ export function IOSExperience({
           </div>
           <label className="ios-range-row"><span><Sun size={16}/> Simulated brightness <b>{sharedPrefs.brightness}%</b></span><input type="range" min="20" max="100" value={sharedPrefs.brightness} onChange={event=>onUpdateSharedPrefs({brightness:Number(event.target.value)})}/></label>
           <label className="ios-range-row"><span><Volume2 size={16}/> Media volume <b>{sharedPrefs.volume}%</b></span><input type="range" min="0" max="100" value={sharedPrefs.volume} onChange={event=>onUpdateSharedPrefs({volume:Number(event.target.value)})}/></label>
-          <div className="ios-control-actions"><button onClick={() => { setPanel(null); launch('settings'); }}><Settings size={15}/> Settings</button><button onClick={() => onSwitchMode('windows12')}><MonitorIcon/> Windows 12</button><button onClick={() => { setLocked(true); setPanel(null); }}><Lock size={15}/> Lock screen</button></div>
+          <div className="ios-control-actions"><button onClick={() => { setPanel(null); launch('settings'); }}><Settings size={15}/> Settings</button><button onClick={() => onSwitchMode('windows12')}><Monitor size={15}/> Windows 12</button><button onClick={() => { setLocked(true); setPanel(null); }}><Lock size={15}/> Lock screen</button></div>
           <p className="ios-hint">Connectivity controls are visual simulations only. They do not change your device radios or operating-system brightness.</p>
         </div>}
 
@@ -314,9 +288,6 @@ export function IOSExperience({
   </div>;
 }
 
-function MonitorIcon() {
-  return <Smartphone size={15}/>;
-}
 
 type IOSSettingsProps = {
   apps: IOSAppItem[];
@@ -351,11 +322,8 @@ export function IOSSettingsApp({apps, installed, mode, iosPrefs, sharedPrefs, on
     <section className="ios-settings-group"><h3>Sounds and notifications</h3><label className="ios-setting-row"><span><b>Media volume</b><small>Changes AeroShell players, not device volume</small></span><strong>{sharedPrefs.volume}%</strong></label><input className="ios-settings-range" type="range" min="0" max="100" value={sharedPrefs.volume} onChange={event=>onUpdateSharedPrefs({volume:Number(event.target.value)})}/><label className="ios-setting-row"><span><b>Notifications</b><small>Simulated AeroShell notifications</small></span><input type="checkbox" checked={iosPrefs.notifications} onChange={event=>onUpdateIOSPrefs({notifications:event.target.checked})}/></label><label className="ios-setting-row"><span><b>Do Not Disturb</b><small>Mute the notification panel</small></span><input type="checkbox" checked={iosPrefs.doNotDisturb} onChange={event=>onUpdateIOSPrefs({doNotDisturb:event.target.checked})}/></label></section>
     <section className="ios-settings-group"><h3>Applications</h3><div className="ios-settings-stat"><b>{installed.length}</b><span>Installed AeroShell apps</span><button onClick={()=>onLaunchApp('store')}>Manage in Store</button></div><div className="ios-managed-apps">{installed.filter(id=>id!=='store').map(id=>{const app=apps.find(item=>item.id===id);if(!app)return null;const Icon=app.Icon;return <div key={id} className="ios-managed-app"><span className="ios-icon-art" style={{'--app-color':app.color} as React.CSSProperties}><Icon size={18}/></span><span><b>{app.title}</b><small>{normalizeAppCategory(app.id,app.category)}</small></span>{!app.defaultInstalled&&<button onClick={()=>onUninstallApp(id)}>Uninstall</button>}</div>;})}</div></section>
     <section className="ios-settings-group"><h3>Browser storage</h3><div className="ios-storage-grid"><div><small>Used by this site</small><b>{storage?formatBytes(storage.usage):'Not reported'}</b></div><div><small>Quota reported</small><b>{storage?formatBytes(storage.quota):'Not reported'}</b></div></div><p>{storageError||'Values are estimates provided by the browser and may be shared across site features.'}</p></section>
-    <section className="ios-settings-group"><h3>Recovery</h3><p>Reset mobile-mode appearance and interaction preferences. Documents, drawings, app installation state and game scores are retained.</p><button className="ios-reset-settings" onClick={onResetSettings}><RotateCcwIcon/> Reset iOS settings</button></section>
+    <section className="ios-settings-group"><h3>Recovery</h3><p>Reset mobile-mode appearance and interaction preferences. Documents, drawings, app installation state and game scores are retained.</p><button className="ios-reset-settings" onClick={onResetSettings}><RotateCcw size={15}/> Reset iOS settings</button></section>
     <p className="ios-settings-footnote"><ShieldCheck size={14}/> iOS 27 is a visual simulation inside AeroShell. It does not install iOS or control real system radios, brightness, notifications or device settings.</p>
   </div>;
 }
 
-function RotateCcwIcon() {
-  return <Activity size={15}/>;
-}
