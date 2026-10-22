@@ -1,7 +1,7 @@
 name: Verify AeroShell
 on:
   push:
-    branches: [main, feature/aeroshell-desktop]
+    branches: [main, feature/aeroshell-desktop, feature/ios27-mode-paint-games]
   pull_request:
     branches: [main]
   workflow_dispatch:
