@@ -77,6 +77,7 @@ AeroShell has no account system or sign-in requirement. Notes, events, settings,
 - **Custom wallpaper:** choose an image file in Settings; the image is resized and stored locally in the current browser.
 - **Writer:** write text and export TXT or Markdown files using the browser's native save picker when available, with a safer download-link fallback.
 - **Markdown Studio:** edit Markdown with a safe live preview, headings, lists, quotes and code blocks, plus `.md` export.
+- **Clock & Timer:** live local clock, stopwatch, and configurable countdowns with whole-minute and second inputs. Enter one second or a duration such as 2 minutes 30 seconds; a generated multi-tone beep plays when the countdown reaches zero unless sound is turned off.
 - **Focus Timer:** use 25-minute focus, 5-minute short-break or 15-minute long-break presets, or specify any custom duration down to one second (for example, 2 minutes 30 seconds). A generated multi-tone beep plays when the timer reaches zero unless sound is turned off; completed focus sessions are tracked locally.
 - **Unit Converter:** convert length, weight, temperature, speed, data and volume units.
 - **Color Studio:** select colors, browse a curated palette, and copy HEX, RGB or HSL values.
