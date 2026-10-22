@@ -138,3 +138,15 @@ The timer's sound alert uses the Web Audio API after the visitor starts the coun
 The desktop uses viewport-aware window geometry, Pointer Events for drag/resize on mouse, stylus and touch-compatible browsers, installed-app desktop shortcuts, and responsive taskbar/menu layouts for phone portrait/landscape, tablet and laptop/Chromebook sizes. The service-worker cache version is bumped so a new release can replace stale shell assets, and the app checks for a service-worker update on launch.
 
 New Store apps: World Clock (live city time zones), Typing Sprint (speed and accuracy practice), and Password Kit (client-side random password generation using the browser cryptography API). Passwords are generated locally and aren't uploaded or saved by the generator.
+
+
+## Media, editing, audio, and coding improvements
+
+- **Saved media library:** Photos and Media Player save chosen uploads in browser IndexedDB so they remain available after reloading or reopening AeroShell. Remove individual photos/tracks from their app to delete them from the shared local media library. AI Studio's source image can also be restored and removed; removing a shared image removes it from the Photos library too. Files stay in this browser and are not uploaded to an AeroShell server. Browser storage quotas and private-browsing settings can limit persistence.
+- **System media volume:** the desktop starts at full AeroShell volume for new/default settings and upgrades the original 65% default once. Settings, the music player slider and browser/device volume still affect final loudness. Synthesized startup and timer sounds respect the AeroShell volume.
+- **Paint:** pointer movement is batched with animation frames, drawing events are coalesced when the browser supports it, and undo memory is capped. PNG export avoids constructing a large base64 string.
+- **Snake:** choose a saved speed and use on-screen directional controls on touchscreen devices, or use keyboard arrows.
+- **Long setup flow:** region/language, keyboard hints, theme, accent, wallpaper, starting volume/accessibility, privacy information, optional app installation, and profile name are configurable before the browser desktop opens. This remains a simulation and does not change OS settings.
+- **Python:** Code Studio reuses its Pyodide worker between runs during the same open editor session and provides lines of input values for the input() function. The first runtime load still requires an internet connection; stopping the worker forces the next run to reload it. Run limits protect the tab from endlessly-running code.
+- **Terminal:** commands such as mkdir, touch, write, cat, cp, mv, rm, cd, and ls work on AeroShell's virtual files. This does not expose or run a real Windows/macOS/Linux shell.
+- **File Explorer text editing:** text, Markdown, CSV and log files can be opened in a built-in editor, changed, saved, or reverted. Code files open in Code Studio.
