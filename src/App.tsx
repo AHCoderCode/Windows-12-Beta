@@ -4,14 +4,14 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
   FileText, Folder, FolderPlus, Gamepad2, Grid2X2, History, Home, Image as ImageIcon, LayoutDashboard, ListTodo, Maximize2, Menu,
   Minus, Moon, MoreHorizontal, PanelTop, Pause, Pencil, Play, Plus, Power, RotateCcw, Search, Settings, ShieldCheck,
-  ShoppingBag, Smartphone, Sun, Target, Palette, Sparkles, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, type LucideIcon
+  ShoppingBag, Smartphone, Sun, Target, Palette, Sparkles, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, Timer, type LucideIcon
 } from 'lucide-react';
 import './styles.css';
 import { RealFilesPanel } from './RealFiles';
 import { evaluateFormula, shownCell, toColumnLabel } from './formulas';
 import { AppStore, ClipboardHub, FocusSpaces, ThemeGallery, AIStudio, TimeMachine, SandboxTerminal, HealthDashboard, type FeatureFile, type HistorySnapshot, type ShelfItem, type PowerAppDefinition } from './PowerApps';
 
-type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf'|'clipboard'|'focus'|'themes'|'ai-studio'|'time-machine'|'terminal'|'health'|'vexel';
+type AppId = 'calendar'|'sheets'|'notes'|'calculator'|'explorer'|'paint'|'photos'|'clock'|'games'|'store'|'browser'|'widgets'|'settings'|'code'|'documents'|'music'|'tasks'|'pdf'|'clipboard'|'focus'|'themes'|'ai-studio'|'time-machine'|'terminal'|'health'|'vexel'|'markdown'|'pomodoro';
 type AppDef = Omit<PowerAppDefinition,'id'> & {id:AppId};
 type MediaStatus = {playing:boolean;title:string;currentTime:number;duration:number};
 type FluidProgress = {label:string;progress:number};
@@ -35,6 +35,8 @@ const APPS: AppDef[] = [
  {id:'games',title:'Games',description:'A bigger collection of casual games',category:'Entertainment',color:'#f18fb9',Icon:Gamepad2,words:'snake memory tic tac toe 2048 minesweeper',defaultInstalled:true},
  {id:'code',title:'Code Studio',description:'Run HTML, CSS, JavaScript and Python in your browser',category:'Developer',color:'#7eb8ff',Icon:Code2,words:'editor html css javascript python programming code playground'},
  {id:'documents',title:'Writer',description:'Create and export text documents',category:'Productivity',color:'#74a9ff',Icon:BookText,words:'word processor document writing export txt md'},
+ {id:'markdown',title:'Markdown Studio',description:'Write Markdown with a safe live preview and export',category:'Productivity',color:'#88a7f6',Icon:FileText,words:'markdown preview notes documentation readme technical writing'},
+ {id:'pomodoro',title:'Focus Timer',description:'A real focus and break timer with session tracking',category:'Productivity',color:'#e39b87',Icon:Timer,words:'pomodoro countdown productivity work breaks focus'},
  {id:'music',title:'Media Player',description:'Play audio files you choose',category:'Entertainment',color:'#d18aff',Icon:Music,words:'music mp3 wav audio player playlist'},
  {id:'tasks',title:'To Do',description:'Track tasks, priorities and completion',category:'Productivity',color:'#7ad7bd',Icon:ListTodo,words:'checklist todo tasks list priority reminders'},
  {id:'pdf',title:'PDF Reader',description:'Preview PDF files in your browser',category:'Productivity',color:'#ed8d96',Icon:FileText,words:'pdf reader document viewer portable document format'},
@@ -457,6 +459,71 @@ function WriterApp({content,setContent,exportFile}:{content:string;setContent:(v
  const words=content.trim()?content.trim().split(/\s+/).length:0;
  return <div className="writer-app"><div className="writer-toolbar"><div className="code-brand"><BookText size={18}/><span><b>Writer</b><small>Local document editor</small></span></div><div className="code-toolbar-actions"><button className="secondary-button" onClick={()=>setContent(content+'\n')}>New line</button><button className="secondary-button" onClick={()=>exportFile('AeroShell-document.txt',content,'text/plain;charset=utf-8')}><ArrowDownToLine size={14}/> Export TXT</button><button className="primary-button" onClick={()=>exportFile('AeroShell-document.md',content,'text/markdown;charset=utf-8')}><ArrowDownToLine size={14}/> Export Markdown</button></div></div><textarea className="writer-editor" onDragOver={e=>{if(e.dataTransfer.types.includes('application/x-aeroshell-clip'))e.preventDefault();}} onDrop={e=>{e.preventDefault();const raw=e.dataTransfer.getData('application/x-aeroshell-clip');let incoming=e.dataTransfer.getData('text/plain');try{const item=JSON.parse(raw) as ShelfItem;incoming=item.kind==='image'&&item.dataUrl?'!['+item.title+']('+item.dataUrl+')':item.content??item.title;}catch{}if(incoming)setContent(content+'\n'+incoming);}} value={content} onChange={e=>setContent(e.target.value)} aria-label="Document text" placeholder="Start writing…"/><div className="writer-status"><span>Saved in this browser automatically</span><span>{words} words · {content.length} characters</span></div></div>;
 }
+function markdownInline(text:string) {
+ return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part,i)=>{
+  if(part.startsWith('**')&&part.endsWith('**'))return <strong key={i}>{part.slice(2,-2)}</strong>;
+  if(part.startsWith('`')&&part.endsWith('`'))return <code key={i}>{part.slice(1,-1)}</code>;
+  return part;
+ });
+}
+function MarkdownPreview({source}:{source:string}) {
+ const blocks:ReactNode[]=[];let inCode=false;let codeLines:string[]=[];let key=0;
+ for(const line of source.split(/\r?\n/)){
+  if(line.trim().startsWith('```')){
+   if(inCode){blocks.push(<pre className="markdown-code-block" key={key++}><code>{codeLines.join('\n')}</code></pre>);codeLines=[];inCode=false;}else inCode=true;
+   continue;
+  }
+  if(inCode){codeLines.push(line);continue;}
+  if(!line.trim()){blocks.push(<div className="markdown-space" key={key++}/>);continue;}
+  if(line.startsWith('### ')){blocks.push(<h3 key={key++}>{markdownInline(line.slice(4))}</h3>);continue;}
+  if(line.startsWith('## ')){blocks.push(<h2 key={key++}>{markdownInline(line.slice(3))}</h2>);continue;}
+  if(line.startsWith('# ')){blocks.push(<h1 key={key++}>{markdownInline(line.slice(2))}</h1>);continue;}
+  if(line.startsWith('> ')){blocks.push(<blockquote key={key++}>{markdownInline(line.slice(2))}</blockquote>);continue;}
+  if(line.startsWith('- ')||line.startsWith('* ')){blocks.push(<ul key={key++}><li>{markdownInline(line.slice(2))}</li></ul>);continue;}
+  if(/^\d+\. /.test(line)){blocks.push(<ol key={key++}><li>{markdownInline(line.replace(/^\d+\. /,''))}</li></ol>);continue;}
+  if(/^---+$/.test(line.trim())){blocks.push(<hr key={key++}/>);continue;}
+  blocks.push(<p key={key++}>{markdownInline(line)}</p>);
+ }
+ if(inCode)blocks.push(<pre className="markdown-code-block" key={key++}><code>{codeLines.join('\n')}</code></pre>);
+ return <div className="markdown-preview">{blocks}</div>;
+}
+function MarkdownStudio({exportFile}:{exportFile:(name:string,data:string,type?:string)=>void}) {
+ const [source,setSource]=useSaved<string>('aeroshell.markdown.source.v1','# Project Notes\n\nWelcome to **Markdown Studio**. Write documentation, README files, study notes and plans.\n\n## Quick start\n- Use **bold** for emphasis\n- Use `inline code` for commands\n- Start a line with `#` for a heading\n\n```js\nconsole.log("Hello, AeroShell!");\n```');
+ const [mode,setMode]=useState<'edit'|'preview'>('edit');
+ const words=source.trim()?source.trim().split(/\s+/).length:0;
+ return <div className="markdown-studio">
+  <div className="markdown-toolbar"><div className="code-brand"><FileText size={18}/><span><b>Markdown Studio</b><small>Documentation and notes · auto-saved locally</small></span></div><div className="markdown-toolbar-actions"><button className={'secondary-button '+(mode==='edit'?'active':'')} onClick={()=>setMode('edit')}>Edit</button><button className={'secondary-button '+(mode==='preview'?'active':'')} onClick={()=>setMode('preview')}>Preview</button><button className="primary-button" onClick={()=>exportFile('AeroShell-notes.md',source,'text/markdown;charset=utf-8')}><ArrowDownToLine size={14}/> Export .md</button></div></div>
+  <div className={'markdown-workspace '+(mode==='preview'?'preview-only':'')}><section className="markdown-editor-pane"><div className="markdown-pane-heading"><span>MARKDOWN SOURCE</span><small>{source.length.toLocaleString()} chars</small></div><textarea value={source} onChange={e=>setSource(e.target.value)} spellCheck={false} aria-label="Markdown source editor" placeholder="# Start writing…"/></section><section className="markdown-preview-pane"><div className="markdown-pane-heading"><span>LIVE PREVIEW</span><small>Safe text rendering</small></div><div className="markdown-preview-scroll"><MarkdownPreview source={source}/></div></section></div>
+  <div className="markdown-status"><span><i/> Saved automatically in this browser</span><span>{words} words · {source.split(/\r?\n/).length} lines</span></div>
+ </div>;
+}
+function PomodoroApp() {
+ const [mode,setMode]=useState<'Focus'|'Short break'|'Long break'>('Focus');
+ const duration=mode==='Focus'?25*60:mode==='Short break'?5*60:15*60;
+ const [remaining,setRemaining]=useState(duration);
+ const [running,setRunning]=useState(false);
+ const [deadline,setDeadline]=useState<number|null>(null);
+ const [sessions,setSessions]=useSaved<number>('aeroshell.pomodoro.sessions.v1',0);
+ const [status,setStatus]=useState('Ready when you are. Pick a session and start.');
+ useEffect(()=>{
+  if(!running||deadline===null)return;
+  const tick=()=>{const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);if(left===0){setRunning(false);setDeadline(null);setStatus(mode==='Focus'?'Focus session complete. Take a short break.':'Break complete. Ready for another round.');if(mode==='Focus')setSessions(value=>value+1);}};
+  const id=window.setInterval(tick,250);tick();return()=>window.clearInterval(id);
+ },[running,deadline,mode,setSessions]);
+ const choose=(next:'Focus'|'Short break'|'Long break')=>{setRunning(false);setDeadline(null);setMode(next);setRemaining(next==='Focus'?25*60:next==='Short break'?5*60:15*60);setStatus(next+' selected.');};
+ const startPause=()=>{if(running){const left=deadline===null?remaining:Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);setRunning(false);setDeadline(null);setStatus('Timer paused.');}else{const base=remaining>0?remaining:duration;setRemaining(base);setDeadline(Date.now()+base*1000);setRunning(true);setStatus(mode+' session in progress.');}};
+ const reset=()=>{setRunning(false);setDeadline(null);setRemaining(duration);setStatus('Timer reset.');};
+ const minutes=String(Math.floor(remaining/60)).padStart(2,'0'),seconds=String(remaining%60).padStart(2,'0');
+ const progress=100-(remaining/duration)*100;
+ return <div className="pomodoro-app"><div className="pomodoro-header"><p className="eyebrow">PERSONAL PRODUCTIVITY</p><h2>Focus Timer</h2><p>One focused block at a time. Breaks count too.</p></div>
+  <div className="pomodoro-modes">{(['Focus','Short break','Long break'] as const).map(value=><button key={value} className={mode===value?'active':''} onClick={()=>choose(value)}>{value}</button>)}</div>
+  <div className="pomodoro-main"><div className="pomodoro-ring" style={{background:'conic-gradient(var(--accent) '+progress+'%,var(--border) '+progress+'%)'}}><div className="pomodoro-ring-inner"><span>{minutes}:{seconds}</span><small>{running?'IN PROGRESS':remaining===0?'COMPLETE':mode.toUpperCase()}</small></div></div>
+   <div className="pomodoro-controls"><button className="primary-button pomodoro-start" onClick={startPause}>{running?'Pause':remaining===0?'Start again':'Start focus'}</button><button className="secondary-button" onClick={reset}>Reset</button></div><p className="pomodoro-status" aria-live="polite">{status}</p></div>
+  <div className="pomodoro-bottom"><div><span>Completed focus sessions</span><b>{sessions}</b></div><div><span>Session length</span><b>{Math.round(duration/60)} min</b></div><button className="secondary-button" onClick={()=>{if(confirm('Reset the completed session count?'))setSessions(0);}}>Reset count</button></div>
+  <p className="hint pomodoro-footnote">The timer runs in this browser tab. Your completed-session count is saved on this device; background tabs may update less frequently.</p>
+ </div>;
+}
+
 function MusicPlayer({onStatus}:{onStatus:(status:MediaStatus)=>void}) {
  const [tracks,setTracks]=useState<{name:string;url:string}[]>([]);const [current,setCurrent]=useState(0);const urls=useRef<string[]>([]);const audioRef=useRef<HTMLAudioElement>(null);
  useEffect(()=>{const toggle=()=>{const audio=audioRef.current;if(!audio)return;if(audio.paused)void audio.play().catch(()=>{});else audio.pause();};window.addEventListener('aeroshell-media-toggle',toggle);return()=>window.removeEventListener('aeroshell-media-toggle',toggle);},[]);
