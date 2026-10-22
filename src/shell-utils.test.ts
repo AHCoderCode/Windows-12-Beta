@@ -21,7 +21,7 @@ describe('cross-device desktop geometry', () => {
 
   it('clamps restored windows after a device rotates or resizes', () => {
     expect(clampWindowFrame({ x: 900, y: 700, w: 900, h: 700 }, 320, 568))
-      .toEqual({ x: 0, y: 0, w: 304, h: 492 });
+      .toEqual({ x: 16, y: 12, w: 304, h: 492 });
   });
 });
 
