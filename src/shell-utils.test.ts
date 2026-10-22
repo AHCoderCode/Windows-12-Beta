@@ -19,6 +19,22 @@ describe('cross-device desktop geometry', () => {
     expect(frame.y + frame.h).toBeLessThanOrEqual(600);
   });
 
+  it('keeps short landscape phones within the viewport', () => {
+    const frame = createInitialWindowFrame(568, 320);
+    expect(frame.max).toBe(true);
+    expect(frame.w).toBeLessThanOrEqual(552);
+    expect(frame.h).toBeLessThanOrEqual(238);
+  });
+
+  it('uses a usable frame on a typical laptop display', () => {
+    const frame = createInitialWindowFrame(1366, 768, 3);
+    expect(frame.max).toBe(false);
+    expect(frame.w).toBeLessThanOrEqual(920);
+    expect(frame.h).toBeLessThanOrEqual(650);
+    expect(frame.x + frame.w).toBeLessThanOrEqual(1366);
+    expect(frame.y + frame.h).toBeLessThanOrEqual(768);
+  });
+
   it('clamps restored windows after a device rotates or resizes', () => {
     expect(clampWindowFrame({ x: 900, y: 700, w: 900, h: 700 }, 320, 568))
       .toEqual({ x: 16, y: 12, w: 304, h: 492 });
