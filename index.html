@@ -8,7 +8,21 @@
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Windows 12 - Beta</title>
+    <style>
+      html,body,#root{margin:0;width:100%;height:100%;background:#080d19;font-family:Inter,"Segoe UI",system-ui,sans-serif}
+      .boot-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:11px;overflow:hidden;color:#f4f6ff;background:radial-gradient(ellipse at 50% 40%,#233e7548,transparent 40%),linear-gradient(135deg,#080d19,#10152b)}
+      .boot-orb{position:absolute;width:360px;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,#8b9dff25,transparent 69%);animation:boot-float 2.4s ease-in-out infinite alternate}
+      .boot-mark{z-index:1;width:70px;height:70px;display:grid;place-items:center;border:1px solid #c3d0ff48;border-radius:22px;background:linear-gradient(145deg,#b6c4ff42,#6e7ffb1b);box-shadow:0 0 45px #7d91ff2a,inset 0 1px #ffffff5c;color:#edf1ff;font-size:39px}
+      .boot-title{z-index:1;font-size:23px;font-weight:650;letter-spacing:-.7px}
+      .boot-subtitle{z-index:1;color:#9eabc9;font-size:12px}
+      .boot-equalizer{z-index:1;height:24px;display:flex;align-items:center;gap:3px;margin-top:7px}
+      .boot-equalizer i{width:3px;height:12px;border-radius:6px;background:#a8b2ff;animation:boot-beat .7s ease-in-out infinite alternate}
+      .boot-equalizer i:nth-child(3n){animation-delay:-.25s}.boot-equalizer i:nth-child(2n){animation-delay:-.45s}
+      .boot-screen small{z-index:1;margin-top:8px;color:#697798;font-size:8px;letter-spacing:2px;font-weight:700}
+      @keyframes boot-beat{to{transform:scaleY(.35);opacity:.45}}@keyframes boot-float{to{transform:scale(1.14);opacity:.65}}
+      @media(prefers-reduced-motion:reduce){.boot-screen *{animation:none!important}}
+    </style>
+    <title>AeroShell Desktop</title>
   </head>
   <body>
     <div id="root"><div class="boot-screen"><div class="boot-orb"></div><div class="boot-mark">✦</div><div class="boot-title">AeroShell</div><div class="boot-subtitle">Preparing your workspace</div><div class="boot-equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><small>PERSONAL DESKTOP EXPERIENCE</small></div></div>
