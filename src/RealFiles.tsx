@@ -80,6 +80,7 @@ export function RealFilesPanel({ onImport }: Props) {
   const [status, setStatus] = useState('Your real files stay on your device. Choose a folder to grant access.');
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [editable, setEditable] = useState(false);
   const [fallbackImport, setFallbackImport] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewKind, setPreviewKind] = useState<'image' | 'audio' | 'video' | 'pdf' | null>(null);
@@ -145,6 +146,7 @@ export function RealFilesPanel({ onImport }: Props) {
     setBusy(true);
     setSelected(entry);
     setDirty(false);
+    setEditable(false);
     setEditor('');
     setPreviewUrl(null);
     setPreviewKind(null);
@@ -156,9 +158,11 @@ export function RealFilesPanel({ onImport }: Props) {
         return;
       }
       if (isTextFile(file) && file.size <= MAX_TEXT_BYTES) {
+        setEditable(true);
         setEditor(await file.text());
         setStatus('Opened real file: ' + entry.path + '. Edits are not saved until you click Save to device.');
       } else {
+        setEditable(false);
         const kinds: Record<string, 'image' | 'audio' | 'video' | 'pdf' | undefined> = {
           png: 'image', jpg: 'image', jpeg: 'image', webp: 'image', gif: 'image', bmp: 'image',
           mp3: 'audio', wav: 'audio', ogg: 'audio', m4a: 'audio', flac: 'audio',
@@ -234,7 +238,7 @@ export function RealFilesPanel({ onImport }: Props) {
     </div>}
     {selected && <div className="real-files-editor">
       <div className="real-files-editor-head"><File size={14}/><b>{selected.path}</b>{dirty && <span>Unsaved edits</span>}</div>
-      {editor !== '' || (selected.size === 0 && isTextFileName(selected.name))
+      {editable
         ? <textarea value={editor} onChange={e => { setEditor(e.target.value); setDirty(true); }} aria-label="Edit real device file" spellCheck={false}/>
         : previewUrl && previewKind === 'image' ? <img className="real-file-preview" src={previewUrl} alt={selected.name}/>
         : previewUrl && previewKind === 'audio' ? <audio className="real-file-media" controls src={previewUrl}/>
@@ -242,7 +246,7 @@ export function RealFilesPanel({ onImport }: Props) {
         : previewUrl && previewKind === 'pdf' ? <iframe className="real-file-pdf" src={previewUrl} title={selected.name}/>
         : <div className="real-files-empty"><AlertCircle size={16}/>{status}</div>}
       <div className="real-files-editor-actions">
-        {editor !== '' || (selected.size === 0 && isTextFileName(selected.name)) ? <>
+        {editable ? <>
           <button className="primary-button" onClick={() => void saveToDevice()} disabled={busy || !dirty}><Save size={14}/> Save to device</button>
           <button className="secondary-button" onClick={() => { onImport(selected.name, editor); setStatus('A separate copy of ' + selected.name + ' was added to AeroShell.'); }}><Upload size={14}/> Copy into AeroShell</button>
         </> : null}
