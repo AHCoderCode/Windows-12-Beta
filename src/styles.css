@@ -769,3 +769,31 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 @media(min-width:760px){.ios-shell{align-items:center;justify-content:center;background:#0b1227}.ios-shell:before{inset:0}.ios-shell:not(.is-app-active){padding:24px}.ios-home-screen{flex:0 1 820px;width:min(100%,460px);height:min(90dvh,920px);border:1px solid #ffffff37;border-radius:35px;box-shadow:0 28px 100px #0007;overflow:auto;padding:26px 24px 100px}.ios-status-bar{position:absolute;top:24px;left:50%;transform:translateX(-50%);width:min(100%,460px);height:39px;padding:0 27px}.ios-dock{position:sticky;left:auto;right:auto;bottom:auto;width:100%;max-width:410px;margin:-86px auto 20px;flex:0 0 auto}.ios-home-indicator{bottom:calc(13px + env(safe-area-inset-bottom,0px))}.ios-panel-overlay{align-items:center;padding:24px}.ios-panel-card{max-height:85dvh}.ios-settings-app{width:min(100%,760px);max-height:86dvh;border:1px solid #ffffff25;border-radius:22px;box-shadow:var(--ios-shadow)}.ios-app-topbar{left:50%;right:auto;transform:translateX(-50%);width:min(100%,700px)}}
 @media(prefers-color-scheme:light){.ios-shell:not([data-theme="dark"]){--ios-muted:#e7ebfa}}
 @media(prefers-reduced-motion:reduce){.ios-panel-card{animation:none!important}.ios-icon-art,.ios-app-icon,.ios-home-indicator,.ios-panel-overlay *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+
+.ios-wallpaper-custom:before{background-image:linear-gradient(145deg,#09122918,#070c1f62)}
+.window.ios-app-window{z-index:800!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;resize:none!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;backdrop-filter:none!important;overflow:hidden!important}.window.ios-app-window .window-title{display:none!important}.window.ios-app-window .window-content{width:100%;height:100%;min-height:0;overflow:auto;background:transparent}.ios-app-window .paint-app,.ios-app-window .games-app,.ios-app-window .sheets-app,.ios-app-window .notes-layout,.ios-app-window .clock-app,.ios-app-window .code-studio,.ios-app-window .writer-app,.ios-app-window .music-app,.ios-app-window .pdf-reader{min-height:0;max-width:100%}
+.ios-app-window .paint-app{padding-top:calc(48px + env(safe-area-inset-top,0px));padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}.ios-app-window .paint-toolbar{flex-wrap:wrap;gap:6px;padding:8px}.ios-app-window .paint-canvas-wrap{min-height:0;width:100%;overflow:auto}.ios-app-window .paint-canvas-wrap canvas{max-width:100%;height:auto;max-height:100%}.ios-app-window .games-app{padding-top:calc(56px + env(safe-area-inset-top,0px));padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}.ios-app-window .game-tabs{overflow-x:auto;flex-wrap:nowrap}.ios-app-window .game-tabs button{flex:0 0 auto}.ios-app-window .clock-app,.ios-app-window .app-page,.ios-app-window .calculator-app,.ios-app-window .photos-app,.ios-app-window .store-app,.ios-app-window .unit-converter-app,.ios-app-window .color-studio-app,.ios-app-window .world-clock-app,.ios-app-window .typing-sprint-app,.ios-app-window .password-kit-app{padding-top:calc(54px + env(safe-area-inset-top,0px));padding-bottom:calc(36px + env(safe-area-inset-bottom,0px));}
+.store-install:disabled{opacity:.4;cursor:progress}.store-installing button{font-size:9px;padding:5px 7px}
+@media(min-width:760px){
+ .window.ios-app-window{border:1px solid #ffffff4a!important;border-radius:34px!important;box-shadow:0 28px 100px #0008!important;background:#10182d!important}
+ .window.ios-app-window .window-content{border-radius:inherit}
+ .ios-shell.is-app-active .ios-app-topbar{top:calc(24px + env(safe-area-inset-top,0px));left:50%;right:auto;transform:translateX(-50%);width:min(460px,calc(100vw - 48px));padding:0 13px}
+ .ios-shell.is-app-active .ios-home-indicator{bottom:max(24px,env(safe-area-inset-bottom,0px))}
+ .ios-app-window .window-content{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+}
+@media(max-width:620px){
+ .ios-app-window .game-panel{max-width:100%;margin:12px auto;padding:10px}
+ .ios-app-window .snake-grid,.ios-app-window .game-2048-board,.ios-app-window .mine-board{max-width:min(100%,390px);margin-left:auto;margin-right:auto}
+ .ios-app-window .memory-grid{gap:7px}
+ .ios-app-window .calc-grid{gap:5px}
+ .ios-app-window .notes-layout{grid-template-columns:minmax(90px,30%) minmax(0,1fr)}
+ .ios-app-window .note-editor{padding:13px 10px}
+ .ios-app-window .note-title-input{font-size:19px}
+ .ios-app-window .sheet-grid{min-width:580px}
+ .ios-app-window .music-app{padding:calc(55px + env(safe-area-inset-top,0px)) 12px calc(35px + env(safe-area-inset-bottom,0px))}
+ .ios-app-window .pdf-toolbar{padding:6px}
+ .ios-app-window .pdf-frame{min-height:200px}
+ .ios-app-window .password-options{grid-template-columns:minmax(0,1fr)}
+}
+@media(prefers-reduced-motion:reduce){.ios-app-window,.ios-app-window *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
