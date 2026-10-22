@@ -318,7 +318,7 @@ type SetupWizardProps = {
  reduceMotion:boolean;setReduceMotion:(value:boolean)=>void;
  theme:Prefs['theme'];setTheme:(value:Prefs['theme'])=>void;accent:string;setAccent:(value:string)=>void;
  wallpaper:string;setWallpaper:(value:string)=>void;username:string;setUsername:(value:string)=>void;
- volume:number;setVolume:(value:number)=>void;optionalApps:AppId[];setOptionalApps:(value:AppId[]|((old:AppId[])=>AppId[]))=>void;
+ volume:number;setVolume:(value:number)=>void;osMode:OperatingMode;onOperatingModeChange:(mode:OperatingMode)=>void;optionalApps:AppId[];setOptionalApps:(value:AppId[]|((old:AppId[])=>AppId[]))=>void;
  progress:number;setProgress:(value:number)=>void;onFinish:()=>void;onSkip:()=>void;
 };
 function SetupWizard({step,setStep,region,setRegion,language,setLanguage,keyboard,setKeyboard,reduceMotion,setReduceMotion,theme,setTheme,accent,setAccent,wallpaper,setWallpaper,username,setUsername,volume,setVolume,osMode,onOperatingModeChange,optionalApps,setOptionalApps,progress,setProgress,onFinish,onSkip}:SetupWizardProps) {
