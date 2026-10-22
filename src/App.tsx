@@ -103,6 +103,9 @@ export default function App() {
  const [codeLaunch,setCodeLaunch]=useState<CodeLaunch>(null);
  const [tasks,setTasks]=useSaved<TaskItem[]>('aeroshell.tasks.v1',[]);
  const [installedApps,setInstalledApps]=useSaved<AppId[]>('aeroshell.installed.apps.v1',DEFAULT_INSTALLED_APPS);
+ const [introDone,setIntroDone]=useState(false);
+ const [startupSoundEnabled,setStartupSoundEnabled]=useSaved<boolean>('aeroshell.startup.sound.v1',true);
+ const startupAudioRef=useRef<AudioContext|null>(null);
  const [pendingStoreApp,setPendingStoreApp]=useState<AppId|null>(null);
  const [clipboardItems,setClipboardItems]=useSaved<ShelfItem[]>('aeroshell.clipboard.items.v1',[]);
  const [fileHistory,setFileHistory]=useSaved<HistorySnapshot[]>('aeroshell.file.history.v1',[]);
@@ -130,6 +133,8 @@ export default function App() {
  const drag=useRef<{id:number;dx:number;dy:number;kind?:'move'|'resize';edge?:string;startX?:number;startY?:number;startW?:number;startH?:number;originX?:number;originY?:number}|null>(null);
  const notice=(s:string)=>{setToast(s);window.setTimeout(()=>setToast(''),2600);};
  useEffect(()=>{const id=window.setInterval(()=>setClock(new Date()),1000);return()=>clearInterval(id);},[]);
+ useEffect(()=>{try{if(localStorage.getItem('aeroshell.store.default-apps.v2')!=='1'){setInstalledApps(['explorer','store','settings']);localStorage.setItem('aeroshell.store.default-apps.v2','1');}}catch{/* keep defaults if storage is disabled */}},[]);
+ useEffect(()=>()=>{const audio=startupAudioRef.current;if(audio&&audio.state!=='closed')void audio.close().catch(()=>{});},[]);
  useEffect(()=>{const f=(e:Event)=>{e.preventDefault();setInstallEvent(e);};window.addEventListener('beforeinstallprompt',f);return()=>window.removeEventListener('beforeinstallprompt',f);},[]);
  useEffect(()=>{if(setupStep!==4)return;setSetupProgress(0);const ticker=window.setInterval(()=>setSetupProgress(value=>Math.min(100,value+4)),120);const finishTimer=window.setTimeout(()=>{setSetupProgress(100);setSetupStep(5);},3150);return()=>{window.clearInterval(ticker);window.clearTimeout(finishTimer);};},[setupStep]);
  useEffect(()=>{if(!files.length)return;setFileHistory(history=>{const last=history[history.length-1];if(last&&JSON.stringify(last.files)===JSON.stringify(files))return history;const snapshot:HistorySnapshot={id:crypto.randomUUID(),createdAt:new Date().toISOString(),label:'Virtual workspace changed',files:JSON.parse(JSON.stringify(files)) as FeatureFile[]};return [...history,snapshot].slice(-24);});},[files]);
@@ -223,6 +228,27 @@ export default function App() {
  </div>;
 }
 
+
+type StartExperienceProps = {firstRun:boolean;soundEnabled:boolean;onToggleSound:()=>void;onLaunch:()=>void};
+function StartExperience({firstRun,soundEnabled,onToggleSound,onLaunch}:StartExperienceProps) {
+ const bars=[16,24,12,32,21,38,17,29,13,36,22,31,14,26,18,34,11,28,16,38,21,30,13,25];
+ return <main className="launch-screen">
+  <div className="launch-orb launch-orb-one"/><div className="launch-orb launch-orb-two"/><div className="launch-grid-texture"/>
+  <header className="launch-topbar"><div className="launch-brand"><span className="launch-logo">✦</span><span><b>AeroShell</b><small>PERSONAL DESKTOP EXPERIENCE</small></span></div><button className="launch-sound-toggle" onClick={onToggleSound} aria-pressed={soundEnabled}><Volume2 size={15}/><span>Startup sound</span><b>{soundEnabled?'On':'Off'}</b></button></header>
+  <section className="launch-content">
+   <div className="launch-kicker"><span className="launch-live-dot"/>YOUR WORKSPACE AWAITS</div>
+   <div className="launch-emblem"><div className="launch-emblem-inner"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M11 17 47 12V47H11Zm42-6L89 5V47H53ZM11 53H47V88L11 82Zm42 0H89V95L53 90Z" fill="currentColor"/></svg></div><span className="launch-emblem-ring launch-ring-one"/><span className="launch-emblem-ring launch-ring-two"/></div>
+   <p className="launch-overline">{firstRun?'WELCOME · LET’S GET YOU SET UP':'WELCOME BACK'}</p>
+   <h1>{firstRun?<>A new space.<br/><span>A fresh start.</span></>:<>Your desktop,<br/><span>your way.</span></>}</h1>
+   <p className="launch-description">{firstRun?'Personalize your AeroShell workspace, choose a few preferences, and make it yours.':'A calm, customizable workspace for your files, ideas, creative tools, and daily work.'}</p>
+   <div className="launch-visualizer" aria-label={soundEnabled?'Startup sound enabled':'Startup sound muted'}>{bars.map((height,index)=><i key={index} style={{height:height+'px',animationDelay:(index*35)+'ms'}}/>)}</div>
+   <div className="launch-audio-caption"><span className="launch-audio-dot"/>{soundEnabled?'A little welcome tune will play when you enter':'Startup audio is muted'}<span className="launch-caption-divider"/>LOCAL-FIRST · NO ACCOUNT REQUIRED</div>
+   <button className="launch-primary" onClick={onLaunch}><span>{firstRun?'Begin setup':'Launch AeroShell'}</span><ArrowRight size={17}/></button>
+   <div className="launch-feature-row"><span><ShieldCheck size={14}/> Your space stays yours</span><span><Sparkles size={14}/> Made to explore</span><span><Monitor size={14}/> Runs in your browser</span></div>
+  </section>
+  <footer className="launch-footer"><span>AEROSHELL DESKTOP</span><span>DESIGNED FOR FOCUS, BUILT FOR CURIOSITY</span><span>WEB EXPERIENCE · BETA</span></footer>
+ </main>;
+}
 
 type SetupWizardProps = {
  step:number;setStep:(step:number)=>void;region:string;setRegion:(value:string)=>void;
@@ -507,30 +533,71 @@ function MarkdownStudio({exportFile}:{exportFile:(name:string,data:string,type?:
  </div>;
 }
 function PomodoroApp() {
- const [mode,setMode]=useState<'Focus'|'Short break'|'Long break'>('Focus');
- const duration=mode==='Focus'?25*60:mode==='Short break'?5*60:15*60;
- const [remaining,setRemaining]=useState(duration);
+ const presets = {'Focus':1500,'Short break':300,'Long break':900} as const;
+ const [mode,setMode]=useState<'Focus'|'Short break'|'Long break'|'Custom'>('Focus');
+ const [duration,setDuration]=useState(1500);
+ const [remaining,setRemaining]=useState(1500);
+ const [minutesInput,setMinutesInput]=useState('25');
+ const [secondsInput,setSecondsInput]=useState('0');
  const [running,setRunning]=useState(false);
  const [deadline,setDeadline]=useState<number|null>(null);
+ const [soundEnabled,setSoundEnabled]=useSaved<boolean>('aeroshell.timer.sound.v1',true);
  const [sessions,setSessions]=useSaved<number>('aeroshell.pomodoro.sessions.v1',0);
- const [status,setStatus]=useState('Ready when you are. Pick a session and start.');
- useEffect(()=>{
-  if(!running||deadline===null)return;
-  const tick=()=>{const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);if(left===0){setRunning(false);setDeadline(null);setStatus(mode==='Focus'?'Focus session complete. Take a short break.':'Break complete. Ready for another round.');if(mode==='Focus')setSessions(value=>value+1);}};
-  const id=window.setInterval(tick,250);tick();return()=>window.clearInterval(id);
- },[running,deadline,mode,setSessions]);
- const choose=(next:'Focus'|'Short break'|'Long break')=>{setRunning(false);setDeadline(null);setMode(next);setRemaining(next==='Focus'?25*60:next==='Short break'?5*60:15*60);setStatus(next+' selected.');};
- const startPause=()=>{if(running){const left=deadline===null?remaining:Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);setRunning(false);setDeadline(null);setStatus('Timer paused.');}else{const base=remaining>0?remaining:duration;setRemaining(base);setDeadline(Date.now()+base*1000);setRunning(true);setStatus(mode+' session in progress.');}};
- const reset=()=>{setRunning(false);setDeadline(null);setRemaining(duration);setStatus('Timer reset.');};
- const minutes=String(Math.floor(remaining/60)).padStart(2,'0'),seconds=String(remaining%60).padStart(2,'0');
- const progress=100-(remaining/duration)*100;
- return <div className="pomodoro-app"><div className="pomodoro-header"><p className="eyebrow">PERSONAL PRODUCTIVITY</p><h2>Focus Timer</h2><p>One focused block at a time. Breaks count too.</p></div>
-  <div className="pomodoro-modes">{(['Focus','Short break','Long break'] as const).map(value=><button key={value} className={mode===value?'active':''} onClick={()=>choose(value)}>{value}</button>)}</div>
-  <div className="pomodoro-main"><div className="pomodoro-ring" style={{background:'conic-gradient(var(--accent) '+progress+'%,var(--border) '+progress+'%)'}}><div className="pomodoro-ring-inner"><span>{minutes}:{seconds}</span><small>{running?'IN PROGRESS':remaining===0?'COMPLETE':mode.toUpperCase()}</small></div></div>
-   <div className="pomodoro-controls"><button className="primary-button pomodoro-start" onClick={startPause}>{running?'Pause':remaining===0?'Start again':'Start focus'}</button><button className="secondary-button" onClick={reset}>Reset</button></div><p className="pomodoro-status" aria-live="polite">{status}</p></div>
-  <div className="pomodoro-bottom"><div><span>Completed focus sessions</span><b>{sessions}</b></div><div><span>Session length</span><b>{Math.round(duration/60)} min</b></div><button className="secondary-button" onClick={()=>{if(confirm('Reset the completed session count?'))setSessions(0);}}>Reset count</button></div>
-  <p className="hint pomodoro-footnote">The timer runs in this browser tab. Your completed-session count is saved on this device; background tabs may update less frequently.</p>
+ const [status,setStatus]=useState('Choose a preset or enter any duration, down to one second.');
+ const [durationError,setDurationError]=useState('');
+ const audioRef=useRef<AudioContext|null>(null);
+ const alarmPlayedRef=useRef(false);
+ const ensureAudio=()=>{try{if(!audioRef.current||audioRef.current.state==='closed')audioRef.current=new AudioContext();void audioRef.current.resume().catch(()=>{});}catch{/* timer itself still works if audio is unavailable */}};
+ const playAlarm=useCallback(()=>{if(!soundEnabled)return;const context=audioRef.current;if(!context||context.state==='closed')return;void context.resume().then(()=>{const now=context.currentTime+0.025;[880,660,880,988].forEach((frequency,index)=>{const start=now+index*0.24;const oscillator=context.createOscillator();const gain=context.createGain();oscillator.type='triangle';oscillator.frequency.setValueAtTime(frequency,start);gain.gain.setValueAtTime(0.0001,start);gain.gain.exponentialRampToValueAtTime(0.14,start+0.018);gain.gain.exponentialRampToValueAtTime(0.0001,start+0.17);oscillator.connect(gain);gain.connect(context.destination);oscillator.start(start);oscillator.stop(start+0.19);});}).catch(()=>{});},[soundEnabled]);
+ useEffect(()=>{if(!running||deadline===null)return;const tick=()=>{const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);if(left===0&&!alarmPlayedRef.current){alarmPlayedRef.current=true;setRunning(false);setDeadline(null);setStatus(mode==='Focus'?'Focus complete — time for a break.':'Timer finished. Nice work.');if(mode==='Focus')setSessions(value=>value+1);playAlarm();}};const id=window.setInterval(tick,200);tick();return()=>window.clearInterval(id);},[running,deadline,mode,playAlarm,setSessions]);
+ useEffect(()=>()=>{const context=audioRef.current;if(context&&context.state!=='closed')void context.close().catch(()=>{});},[]);
+ const choose=(next:'Focus'|'Short break'|'Long break')=>{const total=presets[next];setRunning(false);setDeadline(null);alarmPlayedRef.current=false;setMode(next);setDuration(total);setRemaining(total);setMinutesInput(String(Math.floor(total/60)));setSecondsInput(String(total%60));setDurationError('');setStatus(next+' selected.');};
+ const applyCustom=()=>{const rawMinutes=Number(minutesInput),rawSeconds=Number(secondsInput);if(!Number.isFinite(rawMinutes)||!Number.isFinite(rawSeconds)||!Number.isInteger(rawMinutes)||!Number.isInteger(rawSeconds)||rawMinutes<0||rawMinutes>999||rawSeconds<0||rawSeconds>59){setDurationError('Use 0–999 minutes and 0–59 seconds.');return;}const total=rawMinutes*60+rawSeconds;if(total<1){setDurationError('Set a timer for at least one second.');return;}setRunning(false);setDeadline(null);alarmPlayedRef.current=false;setMode('Custom');setDuration(total);setRemaining(total);setDurationError('');setStatus('Custom timer set. Press Start when ready.');};
+ const startPause=()=>{if(running){const left=deadline===null?remaining:Math.max(0,Math.ceil((deadline-Date.now())/1000));setRemaining(left);setRunning(false);setDeadline(null);setStatus('Timer paused.');return;}const base=remaining>0?remaining:duration;alarmPlayedRef.current=false;ensureAudio();setRemaining(base);setDeadline(Date.now()+base*1000);setRunning(true);setStatus('Timer running — the alert will beep when it ends.');};
+ const reset=()=>{setRunning(false);setDeadline(null);alarmPlayedRef.current=false;setRemaining(duration);setStatus('Timer reset.');};
+ const displayMinutes=String(Math.floor(remaining/60)).padStart(2,'0'),displaySeconds=String(remaining%60).padStart(2,'0');
+ const progress=duration>0?100-(remaining/duration)*100:0;
+ const formatDuration=(value:number)=>value>=3600?Math.floor(value/3600)+'h '+Math.floor((value%3600)/60)+'m '+(value%60)+'s':value>=60?Math.floor(value/60)+'m '+(value%60)+'s':value+' second'+(value===1?'':'s');
+ return <div className="pomodoro-app"><div className="pomodoro-header"><p className="eyebrow">PERSONAL PRODUCTIVITY</p><h2>Focus Timer</h2><p>Set a one-second countdown or a longer focus session.</p></div>
+  <div className="pomodoro-modes">{(['Focus','Short break','Long break'] as const).map(value=><button key={value} className={mode===value?'active':''} onClick={()=>choose(value)}>{value}<small>{Math.floor(presets[value]/60)} min</small></button>)}<button className={mode==='Custom'?'active':''} onClick={()=>{setRunning(false);setDeadline(null);setMode('Custom');setStatus('Enter your own duration below.');}}>Custom</button></div>
+  <div className="pomodoro-custom"><label><span>Minutes</span><input type="number" inputMode="numeric" min="0" max="999" step="1" value={minutesInput} onChange={e=>setMinutesInput(e.target.value)} disabled={running} aria-label="Timer minutes"/></label><span className="pomodoro-colon">:</span><label><span>Seconds</span><input type="number" inputMode="numeric" min="0" max="59" step="1" value={secondsInput} onChange={e=>setSecondsInput(e.target.value)} disabled={running} aria-label="Timer seconds"/></label><button className="secondary-button" onClick={applyCustom} disabled={running}>Set timer</button></div>
+  {durationError&&<p className="pomodoro-error" role="alert">{durationError}</p>}
+  <div className="pomodoro-main"><div className="pomodoro-ring" style={{background:'conic-gradient(var(--accent) '+progress+'%,var(--border) '+progress+'%)'}}><div className="pomodoro-ring-inner"><span>{displayMinutes}:{displaySeconds}</span><small>{running?'IN PROGRESS':remaining===0?'COMPLETE':mode.toUpperCase()}</small></div></div>
+   <div className="pomodoro-controls"><button className="primary-button pomodoro-start" onClick={startPause}>{running?'Pause':remaining===0?'Start again':'Start timer'}</button><button className="secondary-button" onClick={reset}>Reset</button><button className={'secondary-button pomodoro-sound '+(soundEnabled?'active':'')} onClick={()=>setSoundEnabled(v=>!v)} aria-pressed={soundEnabled}><Volume2 size={14}/>{soundEnabled?'Beep on':'Beep off'}</button></div><p className="pomodoro-status" aria-live="polite">{status}</p><p className="pomodoro-duration-note">Selected length: {formatDuration(duration)} · {soundEnabled?'audible alarm enabled':'sound disabled'}</p></div>
+  <div className="pomodoro-bottom"><div><span>Completed focus sessions</span><b>{sessions}</b></div><div><span>Current countdown</span><b>{formatDuration(remaining)}</b></div><button className="secondary-button" onClick={()=>{if(confirm('Reset the completed session count?'))setSessions(0);}}>Reset count</button></div>
+  <p className="hint pomodoro-footnote">The timer runs in this browser tab. Start it with sound enabled so the browser can unlock audio for the beep when the countdown reaches zero.</p>
  </div>;
+}
+
+type UnitCategory='Length'|'Weight'|'Temperature'|'Speed'|'Data'|'Volume';
+const UNIT_OPTIONS:Record<UnitCategory,{id:string;label:string;factor?:number}[]> = {
+ Length:[{id:'m',label:'Meters',factor:1},{id:'km',label:'Kilometers',factor:1000},{id:'cm',label:'Centimeters',factor:0.01},{id:'mm',label:'Millimeters',factor:0.001},{id:'mi',label:'Miles',factor:1609.344},{id:'yd',label:'Yards',factor:0.9144},{id:'ft',label:'Feet',factor:0.3048},{id:'in',label:'Inches',factor:0.0254}],
+ Weight:[{id:'kg',label:'Kilograms',factor:1},{id:'g',label:'Grams',factor:0.001},{id:'mg',label:'Milligrams',factor:0.000001},{id:'lb',label:'Pounds',factor:0.45359237},{id:'oz',label:'Ounces',factor:0.028349523125},{id:'t',label:'Metric tonnes',factor:1000}],
+ Temperature:[{id:'C',label:'Celsius'},{id:'F',label:'Fahrenheit'},{id:'K',label:'Kelvin'}],
+ Speed:[{id:'mps',label:'Meters per second',factor:1},{id:'kph',label:'Kilometers per hour',factor:1/3.6},{id:'mph',label:'Miles per hour',factor:0.44704}],
+ Data:[{id:'B',label:'Bytes',factor:1},{id:'KB',label:'Kilobytes (1000 B)',factor:1000},{id:'MB',label:'Megabytes',factor:1000000},{id:'GB',label:'Gigabytes',factor:1000000000},{id:'TB',label:'Terabytes',factor:1000000000000}],
+ Volume:[{id:'L',label:'Liters',factor:1},{id:'mL',label:'Milliliters',factor:0.001},{id:'gal',label:'US gallons',factor:3.785411784},{id:'cup',label:'US cups',factor:0.2365882365},{id:'fl-oz',label:'US fluid ounces',factor:0.0295735295625}]
+};
+function UnitConverter() {
+ const [category,setCategory]=useState<UnitCategory>('Length');
+ const [amount,setAmount]=useState('1');
+ const [from,setFrom]=useState('m');const [to,setTo]=useState('ft');
+ const num=Number(amount);
+ const convert=(value:number,source:string,target:string)=>{if(category==='Temperature'){const celsius=source==='C'?value:source==='F'?(value-32)*5/9:value-273.15;return target==='C'?celsius:target==='F'?celsius*9/5+32:celsius+273.15;}const base=value*(UNIT_OPTIONS[category].find(u=>u.id===source)?.factor??1);return base/(UNIT_OPTIONS[category].find(u=>u.id===target)?.factor??1);};
+ const result=Number.isFinite(num)?convert(num,from,to):Number.NaN;
+ const changeCategory=(value:UnitCategory)=>{setCategory(value);setFrom(UNIT_OPTIONS[value][0].id);setTo(UNIT_OPTIONS[value][1]?.id??UNIT_OPTIONS[value][0].id);};
+ const copy=()=>{if(!Number.isFinite(result))return;void navigator.clipboard?.writeText(String(Number(result.toPrecision(10)))).then(()=>{},()=>{});};
+ return <div className="unit-converter-app"><div className="unit-header"><p className="eyebrow">EVERYDAY UTILITIES</p><h2>Unit Converter</h2><p>Quick, accurate conversions across six categories.</p></div><div className="unit-category-grid">{(Object.keys(UNIT_OPTIONS) as UnitCategory[]).map(item=><button key={item} className={category===item?'active':''} onClick={()=>changeCategory(item)}>{item}</button>)}</div><div className="unit-conversion-grid"><section className="unit-side"><label>Convert from<select value={from} onChange={e=>setFrom(e.target.value)}>{UNIT_OPTIONS[category].map(unit=><option key={unit.id} value={unit.id}>{unit.label}</option>)}</select></label><input className="unit-amount" type="number" value={amount} onChange={e=>setAmount(e.target.value)} aria-label="Amount to convert"/></section><button className="unit-swap" title="Swap units" onClick={()=>{setFrom(to);setTo(from);}}><ArrowLeftRight size={18}/></button><section className="unit-side"><label>Convert to<select value={to} onChange={e=>setTo(e.target.value)}>{UNIT_OPTIONS[category].map(unit=><option key={unit.id} value={unit.id}>{unit.label}</option>)}</select></label><div className="unit-result">{Number.isFinite(result)?Number(result.toPrecision(9)).toLocaleString(undefined,{maximumFractionDigits:8}):'—'}</div></section></div><div className="unit-result-footer"><span>{amount||'0'} {UNIT_OPTIONS[category].find(unit=>unit.id===from)?.label} equals</span><b>{Number.isFinite(result)?Number(result.toPrecision(9)).toLocaleString(undefined,{maximumFractionDigits:8}):'Enter a valid number'} {UNIT_OPTIONS[category].find(unit=>unit.id===to)?.label}</b><button className="secondary-button" onClick={copy}><Copy size={14}/> Copy result</button></div><p className="hint">Data units use decimal multiples (1 KB = 1,000 bytes). Temperature conversions use Celsius internally.</p></div>;
+}
+function hexToRgb(hex:string) {const value=hex.replace('#','');return {r:parseInt(value.slice(0,2),16),g:parseInt(value.slice(2,4),16),b:parseInt(value.slice(4,6),16)};}
+function rgbToHsl(r:number,g:number,b:number) {const rr=r/255,gg=g/255,bb=b/255,max=Math.max(rr,gg,bb),min=Math.min(rr,gg,bb);let h=0,s=0;const l=(max+min)/2;if(max!==min){const delta=max-min;s=l>0.5?delta/(2-max-min):delta/(max+min);if(max===rr)h=(gg-bb)/delta+(gg<bb?6:0);else if(max===gg)h=(bb-rr)/delta+2;else h=(rr-gg)/delta+4;h/=6;}return {h:Math.round(h*360),s:Math.round(s*100),l:Math.round(l*100)};}
+function ColorStudio() {
+ const [color,setColor]=useState('#8C94FF');const [status,setStatus]=useState('Select a color or choose a palette swatch.');
+ const rgb=hexToRgb(color),hsl=rgbToHsl(rgb.r,rgb.g,rgb.b);
+ const values=[['HEX',color.toUpperCase()],['RGB',`rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`],['HSL',`hsl(${hsl.h}, ${hsl.s}%, ${hsl.l}%)`]];
+ const palette=['#8C94FF','#56C8EC','#50C99B','#F0AE73','#EC84AC','#BD94FF','#FF6B6B','#F7CB4D','#2A3447','#F5F7FF','#204E8A','#D5E8D4','#F4CCCC','#D9D2E9','#B4C7E7','#E2F0D9'];
+ const copy=async(value:string)=>{try{await navigator.clipboard.writeText(value);setStatus('Copied '+value+' to clipboard.');}catch{setStatus('Clipboard permission unavailable. Select the value and copy it manually.');}};
+ return <div className="color-studio-app"><div className="color-studio-header"><p className="eyebrow">DESIGN UTILITIES</p><h2>Color Studio</h2><p>Pick a shade, preview it, and copy color values into your projects.</p></div><div className="color-studio-main"><div className="color-large-preview" style={{background:color}}><div className="color-preview-pill">{color.toUpperCase()}</div></div><div className="color-picker-row"><label><span>Choose color</span><input type="color" value={color} onChange={e=>setColor(e.target.value.toUpperCase())}/></label><label className="color-hex-input"><span>HEX value</span><input value={color} maxLength={7} onChange={e=>{const v=e.target.value.toUpperCase();if(/^#[0-9A-F]{0,6}$/.test(v))setColor(v);}} onBlur={()=>{if(!/^#[0-9A-F]{6}$/.test(color))setColor('#8C94FF');}}/></label></div><section className="color-values">{values.map(([label,value])=><button key={label} onClick={()=>void copy(value)}><span>{label}</span><b>{value}</b><Copy size={13}/></button>)}</section><div className="color-palette-head"><b>Curated palette</b><span>Tap any shade to select it</span></div><div className="color-swatch-grid">{palette.map(value=><button key={value} className={value===color?'selected':''} style={{background:value}} title={value} aria-label={'Choose '+value} onClick={()=>setColor(value)}>{value===color&&<Check size={17} color={['#2A3447','#204E8A'].includes(value)?'#fff':'#111827'}/>}</button>)}</div><p className="color-status" aria-live="polite">{status}</p><p className="hint">Color values are calculated locally; copied values are ready for CSS, HTML and design work.</p></div></div>;
 }
 
 function MusicPlayer({onStatus}:{onStatus:(status:MediaStatus)=>void}) {
