@@ -437,7 +437,7 @@ function Paint() {
      if(revision!==saveSequenceRef.current)return;
      try{
       const previous=sessionIdRef.current;
-      const saved=await saveUserUpload(new File([blob],'AeroShell-Paint-Session.png',{type:'image/png',lastModified:Date.now()}),'paint-session');
+      const saved=await saveUserUpload(new window.File([blob],'AeroShell-Paint-Session.png',{type:'image/png',lastModified:Date.now()}),'paint-session');
       if(revision!==saveSequenceRef.current){await removeUserUpload(saved.id);return;}
       sessionIdRef.current=saved.id;
       try{localStorage.setItem('aeroshell.paint.session-id.v1',saved.id);}catch{/* IndexedDB copy remains saved */}
@@ -487,7 +487,7 @@ function Paint() {
   const stroke=paintStrokeStyle(colorRef.current,sizeRef.current,c.width/(rectRef.current.width||c.width),eraserRef.current);
   ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
   ctx.lineCap=stroke.lineCap;ctx.lineJoin=stroke.lineJoin;ctx.lineWidth=stroke.lineWidth;
-  ctx.globalCompositeOperation=stroke.globalCompositeOperation;ctx.strokeStyle=stroke.strokeStyle;ctx.imageSmoothingEnabled=true;
+  ctx.globalCompositeOperation=stroke.globalCompositeOperation as GlobalCompositeOperation;ctx.strokeStyle=stroke.strokeStyle;ctx.imageSmoothingEnabled=true;
   ctx.lineTo(pts[0].x+0.01,pts[0].y+0.01);ctx.stroke();ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
   setStatus(eraserRef.current?'Erasing…':'Drawing with '+colorRef.current.toUpperCase()+'.');
  };
