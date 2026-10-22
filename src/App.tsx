@@ -187,17 +187,20 @@ export default function App() {
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);window.addEventListener('resize',resize);
   return()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);window.removeEventListener('resize',resize);};
  },[]);
+ const switchOperatingMode=(mode:OperatingMode)=>{setOsMode(mode);setActiveIosApp(null);setMenu(null);setCtx(null);setWindows(list=>list.map(w=>({...w,min:true})));};
+ const changeIosPrefs=(patch:Partial<IOSPrefs>)=>setIosPrefs(current=>({...current,...patch}));
+ const resetIosSettings=()=>{if(!confirm('Reset iOS 27 appearance, gesture, sound and notification preferences? Your documents, drawings, installed apps and game progress will be kept.'))return;setIosPrefs(DEFAULT_IOS_PREFS);changePrefs({theme:'dark',accent:'#8c94ff',volume:100,brightness:100,wifi:true,bluetooth:false,airplane:false,motion:true});};
  const openApp=useCallback((id:AppId)=>{
   setMenu(null);setCtx(null);
   const targetId:AppId=id!=='store'&&!installedApps.includes(id)?'store':id;
   if(targetId==='store'&&id!=='store'){setPendingStoreApp(id);const wanted=APPS.find(a=>a.id===id);setToast((wanted?.title??id)+' is not installed. Find it in the Store.');}
   else if(pendingStoreApp===id)setPendingStoreApp(null);
+  if(osMode==='ios27'){setActiveIosApp(targetId);setWindows(list=>list.map(w=>({...w,min:w.app!==targetId})));}
   const existing=windows.find(w=>w.app===targetId);
-  if(existing){setActive(existing.id);setWindows(list=>list.map(w=>w.id===existing.id?{...w,min:false}:w));return;}
+  if(existing){setActive(existing.id);setWindows(list=>list.map(w=>w.id===existing.id?{...w,min:false}:osMode==='ios27'?{...w,min:true}:w));return;}
   const n=Date.now()+Math.floor(Math.random()*1000),frame=createInitialWindowFrame(window.innerWidth,window.innerHeight,windows.length);
-  const w:Win={id:n,app:targetId,...frame,min:false};
-  setActive(n);setWindows(list=>[...list,w]);
- },[windows,installedApps,pendingStoreApp]);
+  const w:Win={id:n,app:targetId,...frame,min:false};setActive(n);setWindows(list=>[...list,w]);
+ },[windows,installedApps,pendingStoreApp,osMode]);
 
  const beginFluidProgress=(label:string)=>setFluidProgress({label,progress:0});
  const installApp=(rawId:string)=>{const id=rawId as AppId;setInstalledApps(list=>list.includes(id)?list:[...list,id]);if(pendingStoreApp===id)setPendingStoreApp(null);const app=APPS.find(item=>item.id===id);beginFluidProgress('Installing '+(app?.title??id));setToast((app?.title??id)+' installed in AeroShell.');};
