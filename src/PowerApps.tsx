@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type DragEvent } from 'react';
-import { listUserUploads, removeUserUpload, saveUserUpload, type SavedUpload } from './media-vault';
+import { listUserUploads, removeUserUpload, saveUserUpload } from './media-vault';
 import {
   Activity, ArrowDownToLine, Check, ChevronRight, Clipboard, Code2, File, FileText, Folder, History, Image as ImageIcon,
   ListFilter, Monitor, Music, Palette, Play, Plus, Search, ShieldCheck, Sparkles, Target, Terminal, Trash2, Upload, Wand2,
