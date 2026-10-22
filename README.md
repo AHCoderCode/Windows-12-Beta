@@ -131,3 +131,10 @@ The launch screen appears when AeroShell starts. It features animated audio-visu
 Only **File Explorer**, **AeroShell Store**, and **Settings** are installed by default. A one-time upgrade migration moves prior default-app lists to this core set without deleting saved app data. The Store itself is pinned and cannot be uninstalled. Optional apps are shown in Discover and Installed views, can be searched by name/category, installed into AeroShell's browser-local app list, opened and uninstalled. No native Windows program is downloaded or installed.
 
 The timer's sound alert uses the Web Audio API after the visitor starts the countdown, which unlocks audio from a user gesture. If sound is disabled or the browser does not support audio, the visible countdown still works. Custom values accept 0–999 whole minutes and 0–59 seconds, with a minimum duration of one second.
+
+
+## Final cross-device pass
+
+The desktop uses viewport-aware window geometry, Pointer Events for drag/resize on mouse, stylus and touch-compatible browsers, installed-app desktop shortcuts, and responsive taskbar/menu layouts for phone portrait/landscape, tablet and laptop/Chromebook sizes. The service-worker cache version is bumped so a new release can replace stale shell assets, and the app checks for a service-worker update on launch.
+
+New Store apps: World Clock (live city time zones), Typing Sprint (speed and accuracy practice), and Password Kit (client-side random password generation using the browser cryptography API). Passwords are generated locally and aren't uploaded or saved by the generator.
