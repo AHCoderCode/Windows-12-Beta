@@ -671,3 +671,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
 @media(max-width:620px){.world-clock-app,.typing-sprint-app,.password-kit-app{padding:12px}.world-clock-heading h2,.typing-heading h2,.password-kit-heading h2{font-size:20px}.world-clock-local{padding:12px;gap:10px}.world-clock-local-icon{width:39px;height:39px}.world-clock-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:7px}.world-clock-card{padding:10px}.world-clock-card>strong{font-size:21px}.typing-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.typing-stats article{padding:9px}.typing-passage{padding:12px;font-size:13px;line-height:1.8}.typing-footer{align-items:flex-start;flex-direction:column}.typing-footer button{width:100%}.password-output{padding:11px}.password-actions button{padding:9px 8px;font-size:10px}.password-options{padding:10px;gap:10px}.password-options label{font-size:9px}.password-kit-icon{width:40px;height:40px}}
 @media(max-width:370px){.world-clock-grid{grid-template-columns:minmax(0,1fr)}.world-clock-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}.world-clock-card-top{grid-column:1/-1}.world-clock-card>strong{font-size:23px}.world-clock-card>small{grid-column:1/-1}.typing-stats article>b{font-size:18px}.password-options{grid-template-columns:minmax(0,1fr)}.password-actions{flex-direction:column}.password-actions button{width:100%}}
 @media(prefers-reduced-motion:reduce){.typing-passage .typing-current{animation:none}}
+
+@media(max-width:620px){
+ .taskbar-fluid .task-left{display:flex;flex:0 1 auto;min-width:0;max-width:40vw;overflow:hidden}
+ .taskbar-fluid .fluid-progress-widget,.taskbar-fluid .fluid-media-widget{width:100%;max-width:40vw;min-width:0}
+ .taskbar-fluid .fluid-progress-top b,.taskbar-fluid .fluid-media-title{min-width:0}
+ .taskbar-fluid .fluid-progress-top strong{font-size:9px}
+ .taskbar-fluid .fluid-wave{width:20px}
+ .taskbar-fluid .task-center{max-width:calc(60vw - 80px)}
+}
