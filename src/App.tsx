@@ -57,7 +57,7 @@ const APPS: AppDef[] = [
  {id:'unit-converter',title:'Unit Converter',description:'Convert length, weight, temperature, speed and data',category:'Utilities',color:'#71c9e5',Icon:ArrowLeftRight,words:'unit converter kilometers miles Celsius Fahrenheit kilograms pounds data size'},
  {id:'color-studio',title:'Color Studio',description:'Pick colors, explore palettes and copy HEX, RGB and HSL values',category:'Creative',color:'#cf91eb',Icon:Palette,words:'color picker HEX RGB HSL palette design accessibility'},
  {id:'world-clock',title:'World Clock',description:'Compare live local times across world cities',category:'Utilities',color:'#65b9d8',Icon:Globe,words:'world clock timezone cities global time'},
- {id:'typing-sprint',title:'Typing Sprint',description:'Practice typing speed, accuracy and consistency',category:'Education',color:'#e3ad73',Icon:Keyboard,words:'typing test speed words per minute wpm accuracy keyboard'},
+ {id:'typing-sprint',title:'Typing Sprint',description:'Practice typing speed, accuracy and consistency',category:'Study',color:'#e3ad73',Icon:Keyboard,words:'typing test speed words per minute wpm accuracy keyboard'},
  {id:'password-kit',title:'Password Kit',description:'Generate strong random passwords locally on your device',category:'Security',color:'#77cda7',Icon:KeyRound,words:'password generator secure random privacy security passphrase'},
  {id:'store',title:'AeroShell Store',description:'Discover, install and manage desktop apps',category:'System',color:'#93a5ff',Icon:ShoppingBag,words:'store install apps',defaultInstalled:true},
  {id:'browser',title:'Web Links',description:'Open useful web destinations',category:'Internet',color:'#6bcdbb',Icon:ExternalLink,words:'browser internet web'},
@@ -554,39 +554,13 @@ function createMathQuestion():MathQuestion {
  while(values.size<4){const offset=Math.floor(Math.random()*19)-9;values.add(Math.max(0,answer+offset+(offset===0?3:0)));}
  return {prompt:a+' '+op+' '+b,answer,choices:Array.from(values).sort(()=>Math.random()-.5)};
 }
-type Direction2048 = 'left'|'right'|'up'|'down';
-function spawn2048(board:number[]):number[] {
- const empty=board.map((value,index)=>value===0?index:-1).filter(index=>index>=0);
- if(!empty.length)return board;
- const next=[...board];const slot=empty[Math.floor(Math.random()*empty.length)];next[slot]=Math.random()<0.9?2:4;return next;
-}
-function move2048(board:number[],direction:Direction2048):{board:number[];moved:boolean;gained:number} {
- const next=Array(16).fill(0);let gained=0;
- for(let line=0;line<4;line++){
-  const positions=Array.from({length:4},(_,offset)=>direction==='left'?line*4+offset:direction==='right'?line*4+(3-offset):direction==='up'?offset*4+line:(3-offset)*4+line);
-  const values=positions.map(index=>board[index]).filter(value=>value!==0);const merged:number[]=[];
-  for(let i=0;i<values.length;i++){if(values[i]===values[i+1]){const value=values[i]*2;merged.push(value);gained+=value;i++;}else merged.push(values[i]);}
-  positions.forEach((index,offset)=>{next[index]=merged[offset]??0;});
- }
- return {board:next,moved:next.some((value,index)=>value!==board[index]),gained};
-}
-function makeMines():number[] {
- const values=Array.from({length:81},(_,i)=>i);
- for(let i=values.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[values[i],values[j]]=[values[j],values[i]];}
- return values.slice(0,10);
-}
-function mineNeighbors(index:number):number[] {
- const x=index%9,y=Math.floor(index/9),neighbors:number[]=[];
- for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx=x+dx,ny=y+dy;if(nx>=0&&nx<9&&ny>=0&&ny<9)neighbors.push(ny*9+nx);}
- return neighbors;
-}
-function Games({scores,setScores}:{scores:Record<string,number>;setScores:(v:Record<string,number>|((p:Record<string,number>)=>Record<string,number>))=>void}) {
+function Games({scores,setScores,active=true}:{scores:Record<string,number>;setScores:(v:Record<string,number>|((p:Record<string,number>)=>Record<string,number>))=>void;active?:boolean}) {
  const [game,setGame]=useState<'memory'|'tic'|'snake'|'2048'|'minesweeper'|'reaction'|'math'>('memory');
- const [cards,setCards]=useState(()=>shuffle(['🌙','🌙','⭐','⭐','🍀','🍀','🌸','🌸','🌊','🌊','☀️','☀️']));const [flipped,setFlipped]=useState<number[]>([]);const [matched,setMatched]=useState<number[]>([]);const [turns,setTurns]=useState(0);
+ const [cards,setCards]=useState(()=>shuffle(['🌙','🌙','⭐','⭐','🍀','🍀','🌸','🌸','🌊','🌊','☀️','☀️']));const [flipped,setFlipped]=useState<number[]>([]);const [matched,setMatched]=useState<number[]>([]);const [turns,setTurns]=useState(0);const [memoryStartedAt,setMemoryStartedAt]=useState<number|null>(null);const [memorySeconds,setMemorySeconds]=useState(0);
  const [tic,setTic]=useState<(string|null)[]>(Array(9).fill(null));const [symbol,setSymbol]=useState('X');
- const [snake,setSnake]=useState([22,21,20]);const [food,setFood]=useState(67);const [dir,setDir]=useState(1);const [snakeOn,setSnakeOn]=useState(false);const [snakeSpeed,setSnakeSpeed]=useSaved<number>('aeroshell.snake.speed.v1',180);
- const [board2048,setBoard2048]=useState(()=>spawn2048(spawn2048(Array(16).fill(0))));const [score2048,setScore2048]=useState(0);
- const [mines,setMines]=useState<number[]>(()=>makeMines());const [revealed,setRevealed]=useState<number[]>([]);const [flags,setFlags]=useState<number[]>([]);const [mineEnded,setMineEnded]=useState(false);const [mineWon,setMineWon]=useState(false);
+ const [snake,setSnake]=useState([22,21,20]);const [food,setFood]=useState(67);const [dir,setDir]=useState(1);const [snakeOn,setSnakeOn]=useState(false);const [snakeStarted,setSnakeStarted]=useState(false);const [snakeEnded,setSnakeEnded]=useState(false);const [snakeSpeed,setSnakeSpeed]=useSaved<number>('aeroshell.snake.speed.v1',180);
+ const [board2048,setBoard2048]=useState(()=>spawn2048(spawn2048(Array(16).fill(0))));const [score2048,setScore2048]=useState(0);const [previous2048,setPrevious2048]=useState<number[]|null>(null);const [game2048Won,setGame2048Won]=useState(false);const [game2048Ended,setGame2048Ended]=useState(false);
+ const [mineDifficulty,setMineDifficulty]=useState<'Easy'|'Normal'|'Hard'>('Normal');const mineCountTarget=mineDifficulty==='Easy'?10:mineDifficulty==='Normal'?15:20;const [mines,setMines]=useState<number[]>(()=>createMineLayout(null,15));const [hasMineStarted,setHasMineStarted]=useState(false);const [flagMode,setFlagMode]=useState(false);const [revealed,setRevealed]=useState<number[]>([]);const [flags,setFlags]=useState<number[]>([]);const [mineEnded,setMineEnded]=useState(false);const [mineWon,setMineWon]=useState(false);
  const [reactionPhase,setReactionPhase]=useState<'idle'|'waiting'|'go'|'early'>('idle');const [reactionLast,setReactionLast]=useState<number|null>(null);const reactionStarted=useRef(0);const reactionTimer=useRef<number|null>(null);
  const [mathQuestion,setMathQuestion]=useState<MathQuestion>(()=>createMathQuestion());const [mathScore,setMathScore]=useState(0);const [mathAnswered,setMathAnswered]=useState(0);const [mathFeedback,setMathFeedback]=useState('Choose the right answer to earn a point.');
  function shuffle<T>(arr:T[]):T[]{return arr.map(x=>({x,r:Math.random()})).sort((a,b)=>a.r-b.r).map(v=>v.x);}
