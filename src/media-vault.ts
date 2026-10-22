@@ -1,4 +1,4 @@
-export type MediaKind = 'image' | 'audio';
+export type MediaKind = 'image' | 'audio' | 'paint-session';
 export type SavedUpload = {
   id: string;
   kind: MediaKind;
