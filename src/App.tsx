@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   Activity, AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Clipboard, Code2,
-  ChevronDown, ChevronLeft, ChevronRight, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
+  import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import {
+  Activity, AppWindow, ArrowDownToLine, ArrowLeft, ArrowRight, Bell, Bluetooth, BookText, Brush, Calculator, CalendarDays, Check, Clipboard, Code2,
+  ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Cloud, Copy, ExternalLink, File, FileImage, FileSpreadsheet,
   FileText, Folder, FolderPlus, Gamepad2, Grid2X2, History, Home, Image as ImageIcon, LayoutDashboard, ListTodo, Maximize2, Menu, Monitor,
   Minus, Moon, MoreHorizontal, PanelTop, Pause, Pencil, Play, Plus, Power, RotateCcw, Search, Settings, ShieldCheck,
   ShoppingBag, Smartphone, Sun, Target, Palette, Sparkles, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, Timer, ArrowLeftRight, Globe, Keyboard, KeyRound, type LucideIcon
