@@ -407,21 +407,102 @@ function Paint() {
  const rectRef=useRef<DOMRect|null>(null);
  const pendingPoints=useRef<{x:number;y:number}[]>([]);
  const rafRef=useRef<number|null>(null);
- const [color,setColor]=useState('#1b2338');
- const [size,setSize]=useState(7);
- const [eraser,setEraser]=useState(false);
- const [bg,setBg]=useState('#ffffff');
+ const saveTimerRef=useRef<number|null>(null);
+ const saveSequenceRef=useRef(0);
+ const saveQueueRef=useRef<Promise<void>>(Promise.resolve());
+ const loadedRef=useRef(false);
+ const sessionIdRef=useRef<string|null>(null);
+ const colorRef=useRef('#1b2338');
+ const sizeRef=useRef(7);
+ const eraserRef=useRef(false);
+ const [color,setColor]=useSaved<string>('aeroshell.paint.brush-color.v1','#1b2338');
+ const [size,setSize]=useSaved<number>('aeroshell.paint.brush-size.v1',7);
+ const [eraser,setEraser]=useSaved<boolean>('aeroshell.paint.eraser.v1',false);
+ const [bg,setBg]=useSaved<string>('aeroshell.paint.canvas-background.v1','#ffffff');
  const [status,setStatus]=useState('Drawing is batched to animation frames to keep pointer movement smooth.');
- const pointsForEvent=(event:ReactPointerEvent<HTMLCanvasElement>)=>{const rect=rectRef.current;if(!rect)return[];const native=event.nativeEvent as PointerEvent & {getCoalescedEvents?:()=>PointerEvent[]};const samples=native.getCoalescedEvents?.()??[native];return samples.map(point=>({x:(point.clientX-rect.left)*(canvas.current!.width/rect.width),y:(point.clientY-rect.top)*(canvas.current!.height/rect.height)}));};
+ const [loading,setLoading]=useState(true);
+ colorRef.current=color;sizeRef.current=size;eraserRef.current=eraser;
+ const pointsForEvent=(event:ReactPointerEvent<HTMLCanvasElement>)=>{const rect=rectRef.current,c=canvas.current;if(!rect||!c||rect.width===0||rect.height===0)return[];const native=event.nativeEvent as PointerEvent & {getCoalescedEvents?:()=>PointerEvent[]};const samples=native.getCoalescedEvents?.()??[native];return samples.map(point=>({x:(point.clientX-rect.left)*(c.width/rect.width),y:(point.clientY-rect.top)*(c.height/rect.height)}));};
  const flushPoints=()=>{rafRef.current=null;const c=canvas.current;const ctx=c?.getContext('2d');if(!c||!ctx||!pendingPoints.current.length)return;const pts=pendingPoints.current.splice(0);for(const point of pts)ctx.lineTo(point.x,point.y);ctx.stroke();};
- const start=(e:ReactPointerEvent<HTMLCanvasElement>)=>{const c=canvas.current,ctx=c?.getContext('2d');if(!c||!ctx)return;e.preventDefault();history.current.push(ctx.getImageData(0,0,c.width,c.height));if(history.current.length>8)history.current.shift();drawing.current=true;rectRef.current=c.getBoundingClientRect();c.setPointerCapture(e.pointerId);const pts=pointsForEvent(e);if(!pts.length)return;ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);pendingPoints.current=[];ctx.lineCap='round';ctx.lineJoin='round';ctx.lineWidth=Math.max(1,size*(c.width/(rectRef.current.width||c.width)));ctx.globalCompositeOperation=eraser?'destination-out':'source-over';ctx.strokeStyle=color;ctx.imageSmoothingEnabled=true;};
+ const queueSessionSave=()=>{
+  if(!loadedRef.current||!canvas.current)return;
+  if(saveTimerRef.current!==null)window.clearTimeout(saveTimerRef.current);
+  saveTimerRef.current=window.setTimeout(()=>{
+   saveTimerRef.current=null;
+   const c=canvas.current;if(!c||!loadedRef.current)return;
+   const revision=++saveSequenceRef.current;
+   c.toBlob(blob=>{
+    if(!blob||revision!==saveSequenceRef.current)return;
+    saveQueueRef.current=saveQueueRef.current.then(async()=>{
+     if(revision!==saveSequenceRef.current)return;
+     try{
+      const previous=sessionIdRef.current;
+      const saved=await saveUserUpload(new File([blob],'AeroShell-Paint-Session.png',{type:'image/png',lastModified:Date.now()}),'paint-session');
+      if(revision!==saveSequenceRef.current){await removeUserUpload(saved.id);return;}
+      sessionIdRef.current=saved.id;
+      try{localStorage.setItem('aeroshell.paint.session-id.v1',saved.id);}catch{/* IndexedDB copy remains saved */}
+      if(previous&&previous!==saved.id)await removeUserUpload(previous).catch(()=>{});
+      setStatus('Drawing saved on this device.');
+     }catch(error){setStatus('Drawing is still on screen, but automatic save failed: '+String(error instanceof Error?error.message:error));}
+    }).catch(error=>{setStatus('Could not save drawing: '+String(error));});
+   },'image/png');
+  },450);
+ };
+ useEffect(()=>{
+  let live=true;
+  void (async()=>{
+   let savedId:string|null=null;
+   try{savedId=localStorage.getItem('aeroshell.paint.session-id.v1');}catch{/* browser storage may be unavailable */}
+   try{
+    const saved=savedId?(await listUserUploads('paint-session')).find(item=>item.id===savedId):undefined;
+    if(saved&&canvas.current){
+     const url=URL.createObjectURL(saved.blob);
+     try{
+      const image=new Image();
+      await new Promise<void>((resolve,reject)=>{image.onload=()=>resolve();image.onerror=()=>reject(new Error('Saved drawing could not be decoded.'));image.src=url;});
+      if(!live||!canvas.current)return;
+      const ctx=canvas.current.getContext('2d');
+      if(ctx){ctx.clearRect(0,0,canvas.current.width,canvas.current.height);ctx.drawImage(image,0,0,canvas.current.width,canvas.current.height);}
+      sessionIdRef.current=saved.id;
+      setStatus('Restored your last drawing. New strokes use the currently selected brush color.');
+     }finally{URL.revokeObjectURL(url);}
+    }else if(savedId){setStatus('The previous Paint session is unavailable. Start a new drawing.');}
+    else setStatus('Choose a brush color and draw. Your session saves automatically.');
+   }catch(error){if(live)setStatus('Could not restore Paint session: '+String(error instanceof Error?error.message:error));}
+   finally{if(live){loadedRef.current=true;setLoading(false);}}
+  })();
+  return()=>{live=false;if(saveTimerRef.current!==null)window.clearTimeout(saveTimerRef.current);if(rafRef.current!==null)cancelAnimationFrame(rafRef.current);};
+ },[]);
+ const start=(e:ReactPointerEvent<HTMLCanvasElement>)=>{
+  const c=canvas.current,ctx=c?.getContext('2d');
+  if(!c||!ctx)return;
+  e.preventDefault();
+  if(!loadedRef.current){setStatus('Paint is still loading your saved drawing.');return;}
+  history.current.push(ctx.getImageData(0,0,c.width,c.height));
+  if(history.current.length>30)history.current.shift();
+  drawing.current=true;rectRef.current=c.getBoundingClientRect();c.setPointerCapture(e.pointerId);
+  pendingPoints.current=[];
+  const pts=pointsForEvent(e);
+  if(!pts.length){drawing.current=false;return;}
+  const stroke=paintStrokeStyle(colorRef.current,sizeRef.current,c.width/(rectRef.current.width||c.width),eraserRef.current);
+  ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
+  ctx.lineCap=stroke.lineCap;ctx.lineJoin=stroke.lineJoin;ctx.lineWidth=stroke.lineWidth;
+  ctx.globalCompositeOperation=stroke.globalCompositeOperation;ctx.strokeStyle=stroke.strokeStyle;ctx.imageSmoothingEnabled=true;
+  ctx.lineTo(pts[0].x+0.01,pts[0].y+0.01);ctx.stroke();ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);
+  setStatus(eraserRef.current?'Erasing…':'Drawing with '+colorRef.current.toUpperCase()+'.');
+ };
  const move=(e:ReactPointerEvent<HTMLCanvasElement>)=>{if(!drawing.current)return;pendingPoints.current.push(...pointsForEvent(e));if(rafRef.current===null)rafRef.current=requestAnimationFrame(flushPoints);};
- const stop=(e?:ReactPointerEvent<HTMLCanvasElement>)=>{if(rafRef.current!==null){cancelAnimationFrame(rafRef.current);flushPoints();}drawing.current=false;rectRef.current=null;if(e&&canvas.current?.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);};
- useEffect(()=>()=>{if(rafRef.current!==null)cancelAnimationFrame(rafRef.current);},[]);
- const undo=()=>{const c=canvas.current,ctx=c?.getContext('2d');const last=history.current.pop();if(c&&ctx&&last)ctx.putImageData(last,0,0);else setStatus('There is nothing left to undo.');};
- const clear=()=>{const c=canvas.current,ctx=c?.getContext('2d');if(!c||!ctx||!confirm('Clear the canvas?'))return;history.current.push(ctx.getImageData(0,0,c.width,c.height));if(history.current.length>8)history.current.shift();ctx.clearRect(0,0,c.width,c.height);setStatus('Canvas cleared. Use Undo to restore the previous drawing.');};
- const exportPng=()=>{const c=canvas.current;if(!c)return;const output=document.createElement('canvas');output.width=c.width;output.height=c.height;const ctx=output.getContext('2d');if(!ctx)return;ctx.fillStyle=bg;ctx.fillRect(0,0,output.width,output.height);ctx.drawImage(c,0,0);output.toBlob(blob=>{if(!blob){setStatus('Could not export this drawing.');return;}const url=URL.createObjectURL(blob);const a=document.createElement('a');a.download='aeroshell-paint.png';a.href=url;a.click();window.setTimeout(()=>URL.revokeObjectURL(url),15000);setStatus('PNG export requested.');},'image/png');};
- return <div className="paint-app"><div className="paint-toolbar"><label>Brush<input aria-label="Brush color" type="color" value={color} onChange={e=>setColor(e.target.value)}/></label><label>Size<input type="range" min="1" max="32" value={size} onChange={e=>setSize(Number(e.target.value))}/><span>{size}px</span></label><label>Canvas<input aria-label="Canvas background color" type="color" value={bg} onChange={e=>setBg(e.target.value)}/></label><button className={'secondary-button '+(eraser?'active-tool':'')} onClick={()=>setEraser(v=>!v)}><Undo2 size={14}/>{eraser?'Brush':'Eraser'}</button><button className="secondary-button" onClick={undo}><RotateCcw size={14}/> Undo</button><button className="secondary-button" onClick={clear}>Clear</button><button className="primary-button" onClick={exportPng}><ArrowDownToLine size={14}/> PNG</button></div><div className="paint-canvas-wrap"><canvas ref={canvas} style={{background:bg,touchAction:'none'}} width={1200} height={700} onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={()=>{drawing.current=false;rectRef.current=null;}}/></div><div className="paint-status" role="status">{status} · Undo history: {history.current.length}/8</div></div>;
+ const stop=(e?:ReactPointerEvent<HTMLCanvasElement>)=>{
+  if(rafRef.current!==null){cancelAnimationFrame(rafRef.current);rafRef.current=null;flushPoints();}
+  drawing.current=false;rectRef.current=null;
+  if(e&&canvas.current?.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);
+  queueSessionSave();
+ };
+ const undo=()=>{const c=canvas.current,ctx=c?.getContext('2d');const last=history.current.pop();if(c&&ctx&&last){ctx.putImageData(last,0,0);setStatus('Last change undone.');queueSessionSave();}else setStatus('There is nothing left to undo.');};
+ const clear=()=>{const c=canvas.current,ctx=c?.getContext('2d');if(!c||!ctx||!confirm('Clear the canvas?'))return;history.current.push(ctx.getImageData(0,0,c.width,c.height));if(history.current.length>30)history.current.shift();ctx.clearRect(0,0,c.width,c.height);setStatus('Canvas cleared. Use Undo to restore the previous drawing.');queueSessionSave();};
+ const importImage=(file:File|null)=>{if(!file)return;if(!file.type.startsWith('image/')){setStatus('Choose a supported image file.');return;}const url=URL.createObjectURL(file);const image=new Image();image.onload=()=>{const c=canvas.current,ctx=c?.getContext('2d');if(c&&ctx){history.current.push(ctx.getImageData(0,0,c.width,c.height));if(history.current.length>30)history.current.shift();ctx.clearRect(0,0,c.width,c.height);const scale=Math.min(c.width/image.width,c.height/image.height);const width=image.width*scale,height=image.height*scale;ctx.drawImage(image,(c.width-width)/2,(c.height-height)/2,width,height);setStatus('Image imported. You can draw over it or export it.');queueSessionSave();}URL.revokeObjectURL(url);};image.onerror=()=>{URL.revokeObjectURL(url);setStatus('Could not open that image.');};image.src=url;};
+ const exportPng=()=>{const c=canvas.current;if(!c)return;const output=document.createElement('canvas');output.width=c.width;output.height=c.height;const ctx=output.getContext('2d');if(!ctx)return;ctx.fillStyle=bg;ctx.fillRect(0,0,output.width,output.height);ctx.drawImage(c,0,0);output.toBlob(blob=>{if(!blob){setStatus('Could not export this drawing.');return;}const url=URL.createObjectURL(blob);const a=document.createElement('a');a.download='aeroshell-paint.png';a.href=url;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),15000);setStatus('PNG export requested.');},'image/png');};
+ return <div className="paint-app"><div className="paint-toolbar"><label>Brush<input aria-label="Brush color" type="color" value={color} onChange={e=>{setColor(e.target.value);colorRef.current=e.target.value;setEraser(false);eraserRef.current=false;}}/></label><label>Size<input type="range" min="1" max="32" value={size} onChange={e=>{setSize(Number(e.target.value));sizeRef.current=Number(e.target.value);}}/><span>{size}px</span></label><label>Canvas<input aria-label="Canvas background color" type="color" value={bg} onChange={e=>setBg(e.target.value)}/></label><button className={'secondary-button '+(eraser?'active-tool':'')} onClick={()=>{setEraser(value=>{eraserRef.current=!value;return !value;});}}><Undo2 size={14}/>{eraser?'Brush':'Eraser'}</button><label className="paint-import secondary-button"><Upload size={14}/> Open image<input type="file" accept="image/*" onChange={e=>{importImage(e.target.files?.[0]??null);e.currentTarget.value='';}}/></label><button className="secondary-button" onClick={undo}><RotateCcw size={14}/> Undo</button><button className="secondary-button" onClick={clear}>Clear</button><button className="primary-button" onClick={exportPng}><ArrowDownToLine size={14}/> PNG</button></div><div className="paint-canvas-wrap"><canvas ref={canvas} style={{background:bg,touchAction:'none'}} width={1200} height={700} onPointerDown={start} onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={()=>{if(drawing.current)queueSessionSave();drawing.current=false;rectRef.current=null;}}/></div><div className="paint-status" role="status">{loading?'Restoring Paint session…':status} · Undo history: {history.current.length}/30</div></div>;
 }
 type PhotoItem={id:string;name:string;url:string;size:number};
 function Photos() {
