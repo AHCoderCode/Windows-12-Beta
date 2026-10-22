@@ -32,6 +32,7 @@ const TEXT_EXTENSIONS = new Set([
   'sh', 'bat', 'ps1', 'java', 'c', 'h', 'cpp', 'cs', 'go', 'rs', 'php', 'rb'
 ]);
 const MAX_TEXT_BYTES = 1_500_000;
+const MAX_VIRTUAL_COPY_BYTES = 250_000;
 const MAX_ENTRIES = 300;
 
 function isTextFile(file: File) {
@@ -206,12 +207,12 @@ export function RealFilesPanel({ onImport }: Props) {
     if (!files?.length) return;
     let imported = 0;
     for (const file of Array.from(files)) {
-      if (!isTextFile(file) || file.size > MAX_TEXT_BYTES) continue;
+      if (!isTextFile(file) || file.size > MAX_VIRTUAL_COPY_BYTES) continue;
       try { onImport(file.name, await file.text()); imported++; } catch { /* continue with other picked files */ }
     }
     setStatus(imported
       ? imported + ' text/code file(s) copied into AeroShell. Original files were not changed.'
-      : 'No supported text files were imported. Choose text, code, CSV or JSON files under 1.5 MB.');
+      : 'No files were imported. Choose text/code files under 250 KB to keep browser storage reliable. Larger files can still be edited in the connected folder.');
     setFallbackImport(false);
   };
 
@@ -248,13 +249,13 @@ export function RealFilesPanel({ onImport }: Props) {
       <div className="real-files-editor-actions">
         {editable ? <>
           <button className="primary-button" onClick={() => void saveToDevice()} disabled={busy || !dirty}><Save size={14}/> Save to device</button>
-          <button className="secondary-button" onClick={() => { onImport(selected.name, editor); setStatus('A separate copy of ' + selected.name + ' was added to AeroShell.'); }}><Upload size={14}/> Copy into AeroShell</button>
+          <button className="secondary-button" disabled={(selected.size ?? 0) > MAX_VIRTUAL_COPY_BYTES} onClick={() => { if ((selected.size ?? 0) > MAX_VIRTUAL_COPY_BYTES) { setStatus('This file is too large to copy into browser storage. Save it directly to the device instead.'); return; } onImport(selected.name, editor); setStatus('A separate copy of ' + selected.name + ' was added to AeroShell.'); }}><Upload size={14}/> Copy into AeroShell</button>
         </> : null}
       </div>
     </div>}
     {fallbackImport && <p className="real-files-help">This browser may not support a connected folder. “Open files” works with the regular file picker; supported text/code files can be copied into AeroShell.</p>}
     <div className="real-files-status" role="status"><span className={status.toLowerCase().includes('could not') ? 'warning' : ''}>{status}</span><small>Browser permission required · folder access is active only for this session</small></div>
-    {!root && <div className="real-files-footnote">AeroShell only reads or writes the folder you choose. It cannot scan the whole PC secretly. File types and folder access depend on your browser.</div>}
+    {!root && <div className="real-files-footnote">AeroShell only reads or writes the folder you choose. It cannot scan the whole PC secretly. Virtual copies are limited to 250 KB to protect browser storage; folder edits can be larger.</div>}
   </section>;
 }
 
