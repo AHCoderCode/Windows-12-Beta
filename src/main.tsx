@@ -14,7 +14,7 @@ createRoot(root).render(
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((error) => {
+    navigator.serviceWorker.register('/sw.js').then((registration) => registration.update()).catch((error) => {
       console.warn('AeroShell offline support could not be registered:', error);
     });
   });

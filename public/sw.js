@@ -1,4 +1,4 @@
-const CACHE_NAME = 'aeroshell-shell-v1';
+const CACHE_NAME = 'aeroshell-shell-v2';
 const SHELL_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
