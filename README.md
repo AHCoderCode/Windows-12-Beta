@@ -15,7 +15,7 @@ AeroShell Desktop is an original, Windows-inspired desktop environment that runs
 
 ## Important boundaries
 
-File Explorer displays a simulated filesystem; it cannot silently browse or modify real Windows folders. Import and export require explicit user action. Wi-Fi, Bluetooth, brightness, volume and airplane controls only affect AeroShell's simulated interface. External websites and network-dependent content require connectivity.
+File Explorer includes a virtual filesystem and an optional real-device file panel. Real folders are never scanned silently: the user must choose a folder and grant the browser read/write permission, or choose individual files. Folder access stays in memory for the current session. Browser restrictions differ, especially on mobile. Wi-Fi, Bluetooth, brightness, volume and airplane controls only affect AeroShell's simulated interface. External websites and network-dependent content require connectivity.
 
 ## Requirements and local development
 
@@ -73,9 +73,11 @@ AeroShell has no account system or sign-in requirement. Notes, events, settings,
 
 - **Spreadsheet:** multiple worksheets, up to 16 visible columns and 30 rows in the grid, direct cell editing, CSV import/export, workbook JSON backup, and safe numeric formulas including arithmetic, cell references, SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, PRODUCT, MEDIAN, ROUND, ABS, SQRT, POWER and a numeric IF.
 - **Code Studio:** edit HTML, CSS and JavaScript with a live preview inside a sandboxed iframe; Python runs locally in a separate browser worker through Pyodide. First-time Python execution needs internet to load the runtime. The workspace does not provide a real operating-system shell or direct access to your computer's files.
-- **Virtual File Explorer:** create folders and files, rename or delete items, open editable code files, and save Code Studio files into the virtual filesystem stored by the browser.
+- **Virtual File Explorer:** create folders/files, rename or delete items, open editable code files, and save Code Studio files into browser storage. Its **Device files** panel can connect to a user-selected folder on supported browsers, list nested entries, edit text/code files, save those edits to the original file, preview images/audio/video/PDFs, and copy small text files into the virtual workspace. Folder handles are session-only; reselect the folder after reloading.
 - **Custom wallpaper:** choose an image file in Settings; the image is resized and stored locally in the current browser.
-- **Writer:** write text and export TXT or Markdown files.
+- **Writer:** write text and export TXT or Markdown files using the browser's native save picker when available, with a safer download-link fallback.
+- **Markdown Studio:** edit Markdown with a safe live preview, headings, lists, quotes and code blocks, plus `.md` export.
+- **Focus Timer:** run focus, short-break and long-break countdowns and track completed focus sessions locally.
 - **Media Player:** play audio files selected by the visitor.
 - **PDF Reader:** preview a selected PDF using the browser's built-in viewer when available.
 - **To Do:** create tasks, set priorities, mark them complete, filter the list and delete tasks.
