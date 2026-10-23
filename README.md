@@ -150,3 +150,10 @@ New Store apps: World Clock (live city time zones), Typing Sprint (speed and acc
 - **Python:** Code Studio reuses its Pyodide worker between runs during the same open editor session and provides lines of input values for the input() function. The first runtime load still requires an internet connection; stopping the worker forces the next run to reload it. Run limits protect the tab from endlessly-running code.
 - **Terminal:** commands such as mkdir, touch, write, cat, cp, mv, rm, cd, and ls work on AeroShell's virtual files. This does not expose or run a real Windows/macOS/Linux shell.
 - **File Explorer text editing:** text, Markdown, CSV and log files can be opened in a built-in editor, changed, saved, or reverted. Code files open in Code Studio.
+
+
+## iOS-inspired mobile mode
+
+AeroShell includes a separate browser-based iOS-inspired mobile mode alongside its Windows-style desktop. The mobile Home Screen supports saved wallpaper, configurable local widgets, app pages, an app dock, an app library, simulated Control Center and notifications, a lock screen, and a recent-app switcher. Long-press an app icon to show the top Home Screen editing bar; move icons between pages or into/out of the dock, remove them from the Home Screen, or uninstall optional apps. Swipe horizontally anywhere on the Home Screen to move between pages, and swipe up from the bottom edge of an open app to open the recent-app switcher. Button alternatives remain available for the main actions.
+
+This remains a web simulation, not Apple iOS. Radio, battery and device-status indicators are simulated; browser storage and site permissions remain controlled by the browser.
