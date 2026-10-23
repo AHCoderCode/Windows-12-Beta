@@ -145,6 +145,7 @@ export function IOSExperience({
   };
   const holdStart = (event: ReactPointerEvent<HTMLButtonElement>, appId: string, fromDock = false) => {
     longPressedRef.current = false;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* capture is optional on older browsers */ }
     appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, targetPage: page, pointerId: event.pointerId, active: false, fromDock };
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = window.setTimeout(() => {
@@ -164,7 +165,7 @@ export function IOSExperience({
       if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 9) drag.active = true;
       if (drag.active) {
         const dx = event.clientX - drag.startX;
-        const targetPage = Math.max(0, Math.min(homePageCount - 1, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
+        const targetPage = Math.max(0, Math.min(homePageCount, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
         drag.targetPage = targetPage;
         if (targetPage !== page) setPage(targetPage);
         setDraggingToDock(event.clientY > window.innerHeight - 118);
@@ -208,7 +209,7 @@ export function IOSExperience({
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.15) {
-      setPage(current => Math.max(0, Math.min(homePageCount - 1, current + (dx < 0 ? 1 : -1))));
+      setPage(current => Math.max(0, Math.min(homePageCount, current + (dx < 0 ? 1 : -1))));
       suppressClick.current = true;
       if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current);
       suppressClickTimer.current = window.setTimeout(() => { suppressClick.current = false; }, 180);
