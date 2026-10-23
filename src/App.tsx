@@ -133,6 +133,9 @@ export default function App() {
  const [snapHistory,setSnapHistory]=useSaved<Record<string,number>>('aeroshell.snap.history.v1',{});
  const [windows,setWindows]=useState<Win[]>([]);
  const [active,setActive]=useState<number|null>(null);
+ const desktopRef=useRef<HTMLDivElement|null>(null);
+ const fullscreenWindowIdRef=useRef<number|null>(null);
+ const nativeFullscreenRef=useRef(false);
  const [menu,setMenu]=useState<'start'|'search'|'taskview'|'widgets'|'quick'|'notify'|'calendar'|null>(null);
  const [query,setQuery]=useState('');
  const [ctx,setCtx]=useState<{x:number;y:number}|null>(null);
@@ -246,7 +249,68 @@ export default function App() {
  const deactivateFocus=()=>{if(focusBackup)setPrefs(focusBackup);setFocusBackup(null);setFocusMode(null);};
  const snapWindows=(layout:'side'|'stack'='side')=>{const visible=windows.filter(w=>!w.min).slice(-2);if(visible.length<2)return;const [first,second]=visible;const pairKey=[first.app,second.app].sort().join('::');setSnapHistory(history=>({...history,[pairKey]:(history[pairKey]??0)+1}));const gap=14,top=12,bottom=88,availableHeight=Math.max(260,window.innerHeight-top-bottom);if(layout==='side'&&window.innerWidth>=760){const width=Math.floor((window.innerWidth-gap*3)/2);setWindows(list=>list.map(w=>w.id===first.id?{...w,x:gap,y:top,w:width,h:availableHeight,max:false,min:false}:w.id===second.id?{...w,x:gap*2+width,y:top,w:width,h:availableHeight,max:false,min:false}:w));}else{const height=Math.floor((availableHeight-gap)/2);setWindows(list=>list.map(w=>w.id===first.id?{...w,x:gap,y:top,w:Math.max(320,window.innerWidth-gap*2),h:height,max:false,min:false}:w.id===second.id?{...w,x:gap,y:top+height+gap,w:Math.max(320,window.innerWidth-gap*2),h:height,max:false,min:false}:w));}setSnapDismissed(true);setToast(layout==='side'?'Windows snapped side by side.':'Windows stacked in a workspace.');};
  const patchWin=(id:number,patch:Partial<Win>)=>setWindows(ws=>ws.map(w=>w.id===id?{...w,...patch}:w));
- const closeWin=(id:number)=>{setWindows(ws=>ws.filter(w=>w.id!==id));if(active===id)setActive(windows.filter(w=>w.id!==id).filter(w=>!w.min).at(-1)?.id??null);};
+ const toggleWindowMaximize=(id:number)=>{
+  const target=windows.find(w=>w.id===id);
+  if(!target)return;
+  if(target.max){
+   patchWin(id,{max:false});
+   if(fullscreenWindowIdRef.current===id){
+    fullscreenWindowIdRef.current=null;
+    const shouldExit=nativeFullscreenRef.current&&document.fullscreenElement===desktopRef.current;
+    nativeFullscreenRef.current=false;
+    if(shouldExit)void document.exitFullscreen().catch(()=>undefined);
+   }
+   return;
+  }
+  patchWin(id,{max:true});
+  fullscreenWindowIdRef.current=id;
+  const root=desktopRef.current as (HTMLDivElement&{webkitRequestFullscreen?:()=>Promise<void>|void})|null;
+  if(!root){fullscreenWindowIdRef.current=null;return;}
+  if(typeof root.requestFullscreen==='function'){
+   nativeFullscreenRef.current=true;
+   void root.requestFullscreen().catch(()=>{
+    if(fullscreenWindowIdRef.current===id){
+     nativeFullscreenRef.current=false;
+     setToast('Browser fullscreen was blocked. The app is still expanded to the full viewport.');
+    }
+   });
+  }else if(typeof root.webkitRequestFullscreen==='function'){
+   nativeFullscreenRef.current=true;
+   try{
+    const request=root.webkitRequestFullscreen();
+    if(request&&typeof (request as Promise<void>).catch==='function')void (request as Promise<void>).catch(()=>{nativeFullscreenRef.current=false;});
+   }catch{nativeFullscreenRef.current=false;}
+  }else{
+   nativeFullscreenRef.current=false;
+   setToast('This browser does not support fullscreen mode. The app is expanded to the full viewport.');
+  }
+ };
+ useEffect(()=>{
+  const handleFullscreenChange=()=>{
+   if(document.fullscreenElement===desktopRef.current)return;
+   if(!nativeFullscreenRef.current)return;
+   nativeFullscreenRef.current=false;
+   const id=fullscreenWindowIdRef.current;
+   fullscreenWindowIdRef.current=null;
+   if(id!==null)setWindows(current=>current.map(w=>w.id===id?{...w,max:false}:w));
+  };
+  document.addEventListener('fullscreenchange',handleFullscreenChange);
+  document.addEventListener('webkitfullscreenchange',handleFullscreenChange as EventListener);
+  return ()=>{
+   document.removeEventListener('fullscreenchange',handleFullscreenChange);
+   document.removeEventListener('webkitfullscreenchange',handleFullscreenChange as EventListener);
+  };
+ },[]);
+ const closeWin=(id:number)=>{
+  if(fullscreenWindowIdRef.current===id){
+   fullscreenWindowIdRef.current=null;
+   const shouldExit=nativeFullscreenRef.current&&document.fullscreenElement===desktopRef.current;
+   nativeFullscreenRef.current=false;
+   if(shouldExit)void document.exitFullscreen().catch(()=>undefined);
+  }
+  setWindows(ws=>ws.filter(w=>w.id!==id));
+  if(active===id)setActive(windows.filter(w=>w.id!==id).filter(w=>!w.min).at(-1)?.id??null);
+ };
  const visibleApps=useMemo(()=>APPS.filter(a=>(a.title+' '+a.description+' '+a.category+' '+a.words).toLowerCase().includes(query.toLowerCase())),[query]);
  const appById=(id:AppId)=>APPS.find(a=>a.id===id)!;
  const changePrefs=(patch:Partial<Prefs>)=>setPrefs(p=>({...p,...patch}));
@@ -297,9 +361,9 @@ export default function App() {
   if(setupDone&&accountPasswordHash&&!isUnlocked)return <PasswordLoginScreen username={prefs.username||'Guest'} password={loginPassword} setPassword={setLoginPassword} error={loginError} onSubmit={async()=>{const valid=await verifyLocalPassword(loginPassword,accountPasswordHash);if(valid){setIsUnlocked(true);setLoginPassword('');setLoginError('');}else setLoginError('That password is incorrect. Try again.');}}/>;
   if(!introDone)return <StartExperience firstRun={!setupDone} soundEnabled={startupSoundEnabled} osMode={osMode} onOperatingModeChange={switchOperatingMode} onToggleSound={()=>{if(!startupSoundEnabled)playStartupMusic(true);setStartupSoundEnabled(value=>!value);}} onLaunch={()=>{playStartupMusic();setIntroDone(true);}}/>;
   if(!setupDone)return <SetupWizard step={setupStep} setStep={setSetupStep} region={setupRegion} setRegion={setSetupRegion} language={setupLanguage} setLanguage={setSetupLanguage} keyboard={setupKeyboard} setKeyboard={setSetupKeyboard} reduceMotion={setupReduceMotion} setReduceMotion={setSetupReduceMotion} theme={setupTheme} setTheme={setSetupTheme} accent={setupAccent} setAccent={setSetupAccent} wallpaper={setupWallpaper} setWallpaper={setSetupWallpaper} username={setupUsername} setUsername={setSetupUsername} password={setupPassword} setPassword={setSetupPassword} passwordConfirm={setupPasswordConfirm} setPasswordConfirm={setSetupPasswordConfirm} volume={setupVolume} setVolume={setSetupVolume} osMode={osMode} onOperatingModeChange={switchOperatingMode} optionalApps={setupApps} setOptionalApps={setSetupApps} progress={setupProgress} setProgress={setSetupProgress} onFinish={finishSetup} onSkip={()=>setSetupDone(true)}/>;
- return <div className={'desktop wallpaper-'+prefs.wallpaper+(osMode==='ios27'?' ios-mode-shell':'')+(osMode==='windows7'?' windows7-mode-shell':'')} style={rootStyle} onMouseUp={()=>{drag.current=null;}} onContextMenu={e=>{if((e.target as HTMLElement).closest('.window,.taskbar,.popover,.context-menu'))return;e.preventDefault();setCtx({x:e.clientX,y:e.clientY});setMenu(null);}}>
+ return <div ref={desktopRef} className={'desktop wallpaper-'+prefs.wallpaper+(osMode==='ios27'?' ios-mode-shell':'')+(osMode==='windows7'?' windows7-mode-shell':'')} style={rootStyle} onMouseUp={()=>{drag.current=null;}} onContextMenu={e=>{if((e.target as HTMLElement).closest('.window,.taskbar,.popover,.context-menu'))return;e.preventDefault();setCtx({x:e.clientX,y:e.clientY});setMenu(null);}}>
   <div className="desktop-glow"/><div className="desktop-shortcuts" aria-label="Installed desktop apps">{installedApps.map(id=>APPS.find(item=>item.id===id)).filter((item):item is AppDef=>Boolean(item)).map(a=><button className="desktop-shortcut" key={a.id} title={'Open '+a.title} aria-label={'Open '+a.title} onClick={()=>openApp(a.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openApp(a.id);}}} onDoubleClick={()=>openApp(a.id)}><AppIcon app={a} size={25}/><span>{a.title}</span></button>)}</div>
-  {windows.map(w=>{const a=appById(w.app);return <section key={w.id} className={'window '+(active===w.id?'active ':'')+(osMode!=='ios27'&&w.max?'maximized ':'')+(osMode==='ios27'&&activeIosApp===w.app&&!w.min?'ios-app-window':'')} style={osMode==='ios27'?{left:window.innerWidth>=760?Math.max(0,(window.innerWidth-Math.min(460,window.innerWidth-48))/2):0,top:window.innerWidth>=760?Math.max(0,(window.innerHeight-Math.min(window.innerHeight-48,920))/2):0,width:window.innerWidth>=760?Math.min(460,window.innerWidth-48):'100vw',height:window.innerWidth>=760?Math.min(window.innerHeight-48,920):'100dvh',display:(!w.min&&activeIosApp===w.app)?'flex':'none',zIndex:900}:w.max?{display:w.min?'none':undefined}:{left:w.x,top:w.y,width:w.w,height:w.h,display:w.min?'none':undefined,zIndex:active===w.id?100:20+windows.findIndex(x=>x.id===w.id)}} onPointerDown={()=>setActive(w.id)}><header className="window-title" onDoubleClick={()=>patchWin(w.id,{max:!w.max})} onPointerDown={e=>{if((e.target as HTMLElement).closest('button'))return;if(w.max)return;drag.current={id:w.id,dx:e.clientX-w.x,dy:e.clientY-w.y};setActive(w.id);}}><div className="window-app-title"><AppIcon app={a} size={16}/><span>{a.title}</span></div><div className="window-controls"><button title="Minimize" onClick={()=>patchWin(w.id,{min:true})}><Minus size={15}/></button><button title={w.max?'Restore':'Maximize'} onClick={()=>patchWin(w.id,{max:!w.max})}><Maximize2 size={13}/></button><button className="close-control" title="Close" onClick={()=>closeWin(w.id)}><X size={15}/></button></div></header><div className="window-content">{renderApp(w.app,osMode==='ios27'?activeIosApp===w.app&&!w.min:active===w.id&&!w.min)}</div>{osMode!=='ios27'&&!w.max&&<div className="window-resize-layer">{(['n','s','e','w','ne','nw','se','sw'] as const).map(edge=><div key={edge} className={'resize-handle resize-'+edge} role="presentation" onPointerDown={e=>{e.preventDefault();e.stopPropagation();drag.current={id:w.id,dx:0,dy:0,kind:'resize',edge,startX:e.clientX,startY:e.clientY,startW:w.w,startH:w.h,originX:w.x,originY:w.y};setActive(w.id);}}/>)}</div>}</section>;})}
+  {windows.map(w=>{const a=appById(w.app);return <section key={w.id} className={'window '+(active===w.id?'active ':'')+(osMode!=='ios27'&&w.max?'maximized ':'')+(osMode==='ios27'&&activeIosApp===w.app&&!w.min?'ios-app-window':'')} style={osMode==='ios27'?{left:window.innerWidth>=760?Math.max(0,(window.innerWidth-Math.min(460,window.innerWidth-48))/2):0,top:window.innerWidth>=760?Math.max(0,(window.innerHeight-Math.min(window.innerHeight-48,920))/2):0,width:window.innerWidth>=760?Math.min(460,window.innerWidth-48):'100vw',height:window.innerWidth>=760?Math.min(window.innerHeight-48,920):'100dvh',display:(!w.min&&activeIosApp===w.app)?'flex':'none',zIndex:900}:w.max?{display:w.min?'none':undefined}:{left:w.x,top:w.y,width:w.w,height:w.h,display:w.min?'none':undefined,zIndex:active===w.id?100:20+windows.findIndex(x=>x.id===w.id)}} onPointerDown={()=>setActive(w.id)}><header className="window-title" onDoubleClick={()=>toggleWindowMaximize(w.id)} onPointerDown={e=>{if((e.target as HTMLElement).closest('button'))return;if(w.max)return;drag.current={id:w.id,dx:e.clientX-w.x,dy:e.clientY-w.y};setActive(w.id);}}><div className="window-app-title"><AppIcon app={a} size={16}/><span>{a.title}</span></div><div className="window-controls"><button title="Minimize" onClick={()=>patchWin(w.id,{min:true})}><Minus size={15}/></button><button title={w.max?'Restore':'Full screen'} aria-label={w.max?'Restore window':'Enter full screen'} onClick={()=>toggleWindowMaximize(w.id)}><Maximize2 size={13}/></button><button className="close-control" title="Close" onClick={()=>closeWin(w.id)}><X size={15}/></button></div></header><div className="window-content">{renderApp(w.app,osMode==='ios27'?activeIosApp===w.app&&!w.min:active===w.id&&!w.min)}</div>{osMode!=='ios27'&&!w.max&&<div className="window-resize-layer">{(['n','s','e','w','ne','nw','se','sw'] as const).map(edge=><div key={edge} className={'resize-handle resize-'+edge} role="presentation" onPointerDown={e=>{e.preventDefault();e.stopPropagation();drag.current={id:w.id,dx:0,dy:0,kind:'resize',edge,startX:e.clientX,startY:e.clientY,startW:w.w,startH:w.h,originX:w.x,originY:w.y};setActive(w.id);}}/>)}</div>}</section>;})}
 
   {windows.filter(w=>!w.min).length>=2&&!snapDismissed&&<div className="snap-suggestion"><span className="snap-suggestion-icon"><Target size={17}/></span><span className="snap-suggestion-copy"><b>{snapUseCount?'Your usual workspace':'Smart Window Tiling'}</b><small>{suggestedPair.map(w=>appById(w.app).title).join(' + ')} · {snapUseCount?'Used '+snapUseCount+' times':'Arrange these open apps'}</small></span><button className="snap-action" onClick={()=>snapWindows('side')}>Side by side</button><button className="snap-action secondary" onClick={()=>snapWindows('stack')}>Stack</button><button className="snap-dismiss" aria-label="Dismiss tile suggestion" onClick={()=>setSnapDismissed(true)}><X size={14}/></button></div>}
 
