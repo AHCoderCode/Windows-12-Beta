@@ -86,4 +86,14 @@ create policy "Authenticated users can publish to the Master Chat presence chann
     and realtime.messages.extension = 'presence'
   );
 
+-- Private direct-message change channels may only use a topic containing the signed-in user's UUID.
+-- The underlying message-table RLS policy still limits each payload to its sender/recipient.
+drop policy if exists "Authenticated users can access their Master Chat conversation channels" on realtime.messages;
+create policy "Authenticated users can access their Master Chat conversation channels"
+  on realtime.messages for select to authenticated
+  using (
+    (select realtime.topic()) like 'aeroshell-conversation-' || (select auth.uid())::text || '-%'
+    or (select realtime.topic()) like 'aeroshell-conversation-%-' || (select auth.uid())::text
+  );
+
 -- Never put the Supabase service-role/secret key in browser code.
