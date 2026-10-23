@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
 
@@ -90,7 +90,10 @@ const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 
-export function MasterChat() {
+export function MasterChat({ iosMode = false }: { iosMode?: boolean } = {}) {
+  const chatRootRef = useRef<HTMLElement | null>(null);
+  const nativeChatFullscreenRef = useRef(false);
+  const [conversationFullscreen, setConversationFullscreen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ChatProfile | null>(null);
   const [booting, setBooting] = useState(true);
@@ -533,7 +536,64 @@ export function MasterChat() {
     }
   };
 
+  const toggleConversationFullscreen = () => {
+    if (conversationFullscreen) {
+      setConversationFullscreen(false);
+      nativeChatFullscreenRef.current = false;
+      if (document.fullscreenElement === chatRootRef.current) {
+        void document.exitFullscreen().catch(() => undefined);
+      }
+      return;
+    }
+    if (!iosMode || !activePerson) return;
+    setConversationFullscreen(true);
+    const element = chatRootRef.current as (HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }) | null;
+    if (!element) return;
+    if (typeof element.requestFullscreen === 'function' && document.fullscreenEnabled) {
+      nativeChatFullscreenRef.current = true;
+      void element.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
+        // CSS immersive mode remains available if the browser refuses native fullscreen.
+        nativeChatFullscreenRef.current = false;
+      });
+    } else if (typeof element.webkitRequestFullscreen === 'function') {
+      nativeChatFullscreenRef.current = true;
+      try {
+        const pending = element.webkitRequestFullscreen();
+        if (pending && typeof (pending as Promise<void>).catch === 'function') {
+          void (pending as Promise<void>).catch(() => { nativeChatFullscreenRef.current = false; });
+        }
+      } catch {
+        nativeChatFullscreenRef.current = false;
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (nativeChatFullscreenRef.current && document.fullscreenElement !== chatRootRef.current) {
+        nativeChatFullscreenRef.current = false;
+        setConversationFullscreen(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (iosMode && activePerson && pinUnlocked) return;
+    setConversationFullscreen(false);
+    if (chatRootRef.current && document.fullscreenElement === chatRootRef.current) {
+      nativeChatFullscreenRef.current = false;
+      void document.exitFullscreen().catch(() => undefined);
+    }
+  }, [iosMode, activePerson, pinUnlocked]);
+
   const lockApp = () => {
+    setConversationFullscreen(false);
     setPinUnlocked(false);
     setPinMode('unlock');
     setPinInput('');
@@ -668,14 +728,15 @@ export function MasterChat() {
     </section>;
   }
 
-  return <section className="master-chat-app">
+  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')}>
     <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session}/>
+    {conversationFullscreen && <button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button></div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setMessages([]); setActivePerson(person); setNotice(''); }}>
+        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setConversationFullscreen(false); setMessages([]); setActivePerson(person); setNotice(''); }}>
           <span className="master-chat-avatar">{person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
@@ -686,7 +747,7 @@ export function MasterChat() {
     </aside>
     <div className="master-chat-main">
       {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
-        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => setActivePerson(null)}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span></header>
+        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => {setConversationFullscreen(false);setActivePerson(null);}}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>{iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}</header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
