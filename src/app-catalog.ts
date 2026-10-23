@@ -48,6 +48,7 @@ const CATEGORY_FALLBACKS: Record<string, AppCategory> = {
   'world-clock': 'Utilities',
   'typing-sprint': 'Study',
   'password-kit': 'Security',
+  'master-chat': 'Internet',
   store: 'System',
   browser: 'Internet',
   widgets: 'System',
