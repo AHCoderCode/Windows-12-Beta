@@ -97,7 +97,7 @@ export function IOSExperience({
   const [contextApp, setContextApp] = useState<string | null>(null);
   const [editingHomeScreen, setEditingHomeScreen] = useState(false);
   const [draggingToDock, setDraggingToDock] = useState(false);
-  const appDrag = useRef<{ id: string; startX: number; startY: number; startPage: number; pointerId: number; active: boolean } | null>(null);
+  const appDrag = useRef<{ id: string; startX: number; startY: number; startPage: number; targetPage: number; pointerId: number; active: boolean; fromDock: boolean } | null>(null);
   const suppressClick = useRef(false);
   const suppressClickTimer = useRef<number | null>(null);
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
@@ -143,9 +143,9 @@ export function IOSExperience({
     setLibraryQuery('');
     onLaunchApp(appId);
   };
-  const holdStart = (event: ReactPointerEvent<HTMLButtonElement>, appId: string) => {
+  const holdStart = (event: ReactPointerEvent<HTMLButtonElement>, appId: string, fromDock = false) => {
     longPressedRef.current = false;
-    appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, pointerId: event.pointerId, active: false };
+    appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, targetPage: page, pointerId: event.pointerId, active: false, fromDock };
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
@@ -163,17 +163,10 @@ export function IOSExperience({
     if (drag && drag.pointerId === event.pointerId && editingHomeScreen) {
       if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 9) drag.active = true;
       if (drag.active) {
-        const nearLeft = event.clientX < 28;
-        const nearRight = event.clientX > window.innerWidth - 28;
-        if (nearLeft && page > 0) {
-          const nextPage = page - 1;
-          setPage(nextPage);
-          drag.startPage = nextPage;
-        } else if (nearRight && page < homePageCount) {
-          const nextPage = page + 1;
-          setPage(nextPage);
-          drag.startPage = nextPage;
-        }
+        const dx = event.clientX - drag.startX;
+        const targetPage = Math.max(0, Math.min(homePageCount - 1, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
+        drag.targetPage = targetPage;
+        if (targetPage !== page) setPage(targetPage);
         setDraggingToDock(event.clientY > window.innerHeight - 118);
         event.preventDefault();
         return;
@@ -189,14 +182,17 @@ export function IOSExperience({
         if (event.clientY > window.innerHeight - 118) {
           setSavedDockIds(current => [...(Array.isArray(current) ? current.filter(item => item !== id) : []), id].slice(-4));
           setHiddenHomeApps(current => Array.from(new Set([...(Array.isArray(current) ? current : []), id])));
-          setPage(drag.startPage);
+          setPage(drag.targetPage);
         } else {
-          const dx = event.clientX - drag.startX;
-          const targetPage = Math.max(0, Math.min(homePageCount - 1, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
-          setHomeAppPage(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: targetPage }));
-          setPage(targetPage);
+          setSavedDockIds(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
+          setHiddenHomeApps(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
+          setHomeAppPage(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: drag.targetPage }));
+          setPage(drag.targetPage);
         }
+        gesture.current = null;
         setDraggingToDock(false);
+        setEditingHomeScreen(false);
+        setContextApp(null);
         appDrag.current = null;
         suppressClick.current = true;
         if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current);
@@ -277,7 +273,26 @@ export function IOSExperience({
       </div>
     </div>}
 
-    {!activeApp && !locked && <main className="ios-home-screen" aria-label="iOS-inspired home screen">
+    {editingHomeScreen && contextApp && !activeApp && !locked && (() => {
+      const selected = apps.find(app => app.id === contextApp);
+      if (!selected) return null;
+      const isDocked = safeDockIds.includes(contextApp);
+      const isSystem = Boolean(selected.defaultInstalled);
+      const closeEdit = () => { setEditingHomeScreen(false); setContextApp(null); appDrag.current = null; setDraggingToDock(false); };
+      return <div className="ios-edit-toolbar" role="toolbar" aria-label={'Edit '+selected.title}>
+        <div className="ios-edit-toolbar-title"><span className="ios-icon-art" style={{'--app-color':selected.color} as CSSProperties}><selected.Icon size={18}/></span><span><b>{selected.title}</b><small>Drag to another page or the dock</small></span></div>
+        <div className="ios-edit-toolbar-actions">
+          <button onClick={() => { const targetPage=Math.max(0,(safeHomePages[contextApp]??page)-1);setHomeAppPage(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><ChevronRight size={15} className="ios-edit-left"/> Previous page</button>
+          <button onClick={() => { const targetPage=Math.min(homePageCount,Math.max(page,safeHomePages[contextApp]??page)+1);setHomeAppPage(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><MoveRight size={15}/> Next page</button>
+          <button onClick={() => { if(isDocked){setSavedDockIds(current=>current.filter(id=>id!==contextApp));setHiddenHomeApps(current=>current.filter(id=>id!==contextApp));setHomeAppPage(current=>({...current,[contextApp]:page}));}else{setSavedDockIds(current=>[...current.filter(id=>id!==contextApp),contextApp].slice(-4));setHiddenHomeApps(current=>Array.from(new Set([...current,contextApp])));} closeEdit(); }}><Smartphone size={15}/>{isDocked?'Remove from Dock':'Add to Dock'}</button>
+          <button onClick={() => { setHiddenHomeApps(current=>Array.from(new Set([...current,contextApp])));setSavedDockIds(current=>current.filter(id=>id!==contextApp));closeEdit(); }}><X size={15}/> Remove App</button>
+          <button disabled={isSystem} onClick={() => {const id=contextApp;closeEdit();onUninstallApp(id);}}><Trash2 size={15}/>{isSystem?'System app':'Uninstall'}</button>
+        </div>
+        <button className="ios-edit-done" onClick={closeEdit}>Done</button>
+      </div>;
+    })()}
+
+    {!activeApp && !locked && <main className={'ios-home-screen'+(editingHomeScreen?' is-editing-home':'')+(draggingToDock?' is-dragging-to-dock':'')} aria-label="iOS-inspired home screen">
       <div className="ios-greeting"><span>{clock.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span><strong>{formatClock(clock, true)}</strong><small>AeroShell mobile experience</small></div>
       <div className="ios-home-actions">
         <button onClick={() => showPanel('library')}><Search size={15}/> App Library</button>
@@ -297,7 +312,7 @@ export function IOSExperience({
           const Icon = app.Icon;
           return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current || editingHomeScreen || suppressClick.current) { longPressedRef.current = false; return; } launch(app.id); }}
             onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel('icon-menu'); }}
-            onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd} onPointerLeave={holdEnd}
+            onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd}
             aria-label={'Open '+app.title} title={app.title}>
             <span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24} strokeWidth={1.8}/></span><span className="ios-app-name">{app.title}</span>
           </button>;
@@ -307,7 +322,7 @@ export function IOSExperience({
         {Array.from({ length: homePageCount }, (_, index) => <button key={index} className={page === index ? 'active' : ''} aria-label={'Go to home page '+(index+1)} onClick={() => setPage(index)} />)}
       </div>
       <div className="ios-dock" aria-label="Application dock">
-        {dockIds.map(id => { const app = apps.find(item => item.id === id); if (!app) return null; const Icon = app.Icon; return <button key={id} className="ios-dock-icon" aria-label={'Open '+app.title} title={app.title} onClick={() => launch(id)}><span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24}/></span></button>; })}
+        {dockIds.map(id => { const app = apps.find(item => item.id === id); if (!app) return null; const Icon = app.Icon; return <button key={id} className="ios-dock-icon" aria-label={'Open '+app.title} title={app.title} onClick={() => { if(longPressedRef.current||editingHomeScreen||suppressClick.current){longPressedRef.current=false;return;}launch(id); }} onContextMenu={event=>{event.preventDefault();setContextApp(id);setEditingHomeScreen(true);setPanel(null);}} onPointerDown={event=>holdStart(event,id,true)} onPointerUp={holdEnd} onPointerCancel={holdEnd} onPointerLeave={holdEnd}><span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24}/></span></button>; })}
         <button className="ios-dock-library" onClick={() => showPanel('library')} aria-label="Open App Library"><Grid2X2 size={19}/></button>
       </div>
     </main>}
