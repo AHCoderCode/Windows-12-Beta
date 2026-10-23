@@ -157,6 +157,7 @@ export function IOSExperience({
     setHiddenHomeApps(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : []);
     setSavedDockIds(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : ['store', 'explorer', 'settings', 'notes']);
   }, [installed, setHiddenHomeApps, setSavedDockIds]);
+  useEffect(() => { setPage(current => Math.max(0, Math.min(current, homePageCount - 1))); }, [homePageCount]);
 
   const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
     if (!iosPrefs.gestures) return;
@@ -218,12 +219,14 @@ export function IOSExperience({
     </div>}
 
     {!activeApp && !locked && <main className="ios-home-screen" aria-label="iOS-inspired home screen">
-      <div className="ios-greeting"><span>{clock.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span><strong>{formatClock(clock, true)}</strong><small>AeroShell mobile experience</small></div>
-      <div className="ios-home-actions">
-        <button onClick={() => showPanel('library')}><Search size={15}/> App Library</button>
-        <button onClick={() => showPanel('notifications')}><Bell size={15}/> Notifications</button>
-        <button onClick={() => showPanel('control')}><Sun size={15}/> Control Center</button>
-        <button onClick={() => showPanel('widgets')}><Plus size={15}/> Edit Widgets</button>
+      <div className="ios-greeting">
+        <div className="ios-greeting-copy"><span>{clock.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span><strong>{formatClock(clock, true)}</strong><small>AeroShell mobile experience</small></div>
+        <div className="ios-home-utility-actions">
+          <button onClick={() => showPanel('notifications')} aria-label="Open notifications" title="Notifications"><Bell size={15}/></button>
+          <button onClick={() => showPanel('control')} aria-label="Open Control Center" title="Control Center"><Sun size={15}/></button>
+          <button onClick={() => showPanel('library')} aria-label="Open App Library" title="App Library"><Grid2X2 size={15}/></button>
+          <button onClick={() => showPanel('widgets')} aria-label="Edit Home Screen widgets" title="Edit widgets"><Plus size={15}/></button>
+        </div>
       </div>
       <div className="ios-widget-grid" aria-label="Home screen widgets">
         {safeWidgetIds.map(id => id === 'clock' ? <button key={id} className="ios-widget ios-widget-clock" onClick={() => launch('clock')}><span className="ios-widget-label"><Clock3 size={14}/> World time</span><strong>{formatClock(clock, true)}</strong><small>{clock.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</small></button>
