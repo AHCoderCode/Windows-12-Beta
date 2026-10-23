@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 
 type ChatProfile = { id: string; username: string };
 type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
@@ -656,6 +657,7 @@ export function MasterChat() {
   }
 
   return <section className="master-chat-app">
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session}/>
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button></div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
