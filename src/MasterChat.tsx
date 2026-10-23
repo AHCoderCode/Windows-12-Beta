@@ -549,20 +549,29 @@ export function MasterChat() {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => lockAppRef.current(), 5 * 60 * 1000);
     };
+    const lockWhenHidden = () => {
+      if (document.visibilityState === 'hidden') lockAppRef.current();
+    };
     document.addEventListener('pointerdown', resetTimer, true);
     document.addEventListener('keydown', resetTimer, true);
     document.addEventListener('touchstart', resetTimer, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', lockWhenHidden);
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener('pointerdown', resetTimer, true);
       document.removeEventListener('keydown', resetTimer, true);
       document.removeEventListener('touchstart', resetTimer, true);
+      document.removeEventListener('visibilitychange', lockWhenHidden);
     };
   }, [pinUnlocked]);
 
   useEffect(() => {
     if (!pinCooldownUntil || pinCooldownUntil <= Date.now()) return;
-    const timer = window.setInterval(() => setPinNow(Date.now()), 1000);
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setPinNow(now);
+      if (pinCooldownUntil <= now) window.clearInterval(timer);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [pinCooldownUntil]);
 
@@ -676,8 +685,9 @@ export function MasterChat() {
       {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
         <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => setActivePerson(null)}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span></header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
+        <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
-          {!messages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>This conversation is private to these two accounts.</p></div>}
+          {!messages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>Only the conversation participants can retrieve messages through the app. Message text is not end-to-end encrypted.</p></div>}
           {messages.map((message, index) => {
             const mine = message.sender_id === profile.id;
             const previous = messages[index - 1];
