@@ -8,7 +8,7 @@ type AuthMode = 'signin' | 'signup';
 
 const supabaseClient = (() => {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
   if (!url || !key) return null;
   try {
     const parsedUrl = new URL(url);
@@ -26,7 +26,7 @@ const supabaseClient = (() => {
 })();
 
 const validUsername = (value: string) => /^[a-zA-Z0-9_]{3,20}$/.test(value);
-const usernameEmail = (username: string) => username.toLowerCase() + '@users.aeroshell.chat';
+const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell.invalid';
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const sameConversation = (message: ChatMessage, userId: string, peerId: string) =>
   (message.sender_id === userId && message.recipient_id === peerId) ||
@@ -129,6 +129,7 @@ export function MasterChat() {
     channel.on('presence', { event: 'sync' }, () => {
       const entries = Object.values(channel?.presenceState<{ user_id: string }>() ?? {}).flat();
       setOnlineIds(Array.from(new Set(entries.map(entry => entry.user_id).filter(Boolean))));
+      void loadPeople(profile.id);
     }).subscribe(status => {
       setLive(status === 'SUBSCRIBED');
       if (status === 'SUBSCRIBED') {
@@ -158,7 +159,11 @@ export function MasterChat() {
         tell('Could not load this conversation. Confirm the message-table policies are installed.', 'error');
         return;
       }
-      setMessages((data ?? []) as ChatMessage[]);
+      setMessages(current => {
+        const byId = new Map(current.map(message => [message.id, message]));
+        for (const message of (data ?? []) as ChatMessage[]) byId.set(message.id, message);
+        return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      });
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
@@ -242,17 +247,22 @@ export function MasterChat() {
       return;
     }
     setSending(true);
-    const { data, error } = await supabaseClient.from('aeroshell_messages')
-      .insert({ sender_id: profile.id, recipient_id: activePerson.id, body })
-      .select('id, sender_id, recipient_id, body, created_at').single();
-    if (error) tell('Message did not send. Check your connection and database policies.', 'error');
-    else if (data) {
-      setDraft('');
-      setMessages(current => current.some(message => message.id === data.id) ? current : [...current, data as ChatMessage]);
-      tell('Message sent.', 'success');
-      inputRef.current?.focus();
+    try {
+      const { data, error } = await supabaseClient.from('aeroshell_messages')
+        .insert({ sender_id: profile.id, recipient_id: activePerson.id, body })
+        .select('id, sender_id, recipient_id, body, created_at').single();
+      if (error) tell('Message did not send. Check your connection and database policies.', 'error');
+      else if (data) {
+        setDraft('');
+        setMessages(current => current.some(message => message.id === data.id) ? current : [...current, data as ChatMessage]);
+        tell('Message sent.', 'success');
+        inputRef.current?.focus();
+      }
+    } catch {
+      tell('Message did not send because the connection was interrupted. Please try again.', 'error');
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -286,7 +296,7 @@ export function MasterChat() {
         <ol>
           <li>Create a project at <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Supabase Dashboard</a>.</li>
           <li>Run supabase/master-chat.sql in the project's SQL Editor.</li>
-          <li>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the local .env and Vercel project environment variables.</li>
+          <li>Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to the local .env and Vercel project environment variables.</li>
           <li>Turn off email confirmation in Supabase Auth for username-only accounts, then redeploy.</li>
         </ol>
         <p className="hint">Only the public publishable key belongs in frontend settings. Never put a Supabase service-role key in website code or Vercel's VITE_ variables.</p>
