@@ -110,7 +110,7 @@ export function IOSExperience({
     [apps, installed],
   );
   const homeApps = useMemo(() => installedApps.filter(app => !safeHiddenApps.includes(app.id)), [installedApps, safeHiddenApps]);
-  const homePages = useMemo(() => homeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? safeHomePages[app.id] : Math.floor(index / 16) })), [homeApps, safeHomePages]);
+  const homePages = useMemo(() => homeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? Math.min(50, safeHomePages[app.id]) : Math.floor(index / 16) })), [homeApps, safeHomePages]);
   const homePageCount = Math.max(1, Math.ceil(homeApps.length / 16), ...homePages.map(item => item.page + 1));
   const visibleHomeApps = homePages.filter(item => item.page === page).map(item => item.app);
   const dockIds = useMemo(() => safeDockIds.filter(id => installed.includes(id)).slice(-4), [safeDockIds, installed]);
@@ -169,7 +169,7 @@ export function IOSExperience({
     if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current;
     gesture.current = null;
-    if (!start || panel || locked) return;
+    if (!start || start.target === 'status' || panel || locked) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.2 && start.target === 'grid') {
@@ -314,7 +314,7 @@ export function IOSExperience({
         {panel==='icon-menu' && contextApp && <div className="ios-icon-action-menu">
           <p>{apps.find(app=>app.id===contextApp)?.description}</p>
           <button onClick={()=>launch(contextApp)}><ArrowRight size={15}/> Open app</button>
-          <button onClick={()=>{const index=homeApps.findIndex(app=>app.id===contextApp);const currentPage=Number.isInteger(safeHomePages[contextApp])?safeHomePages[contextApp]:Math.max(0,Math.floor(index/16));const nextPage=currentPage+1;setHomeAppPages(current=>({...((current&&typeof current==='object')?current:{}),[contextApp]:nextPage}));setPage(nextPage);setPanel(null);setContextApp(null);}}><MoveRight size={15}/> Move to next Home Screen page</button>
+          <button onClick={()=>{const index=homeApps.findIndex(app=>app.id===contextApp);const currentPage=Number.isInteger(safeHomePages[contextApp])?safeHomePages[contextApp]:Math.max(0,Math.floor(index/16));const nextPage=Math.min(50,currentPage+1);setHomeAppPages(current=>({...((current&&typeof current==='object')?current:{}),[contextApp]:nextPage}));setPage(nextPage);setPanel(null);setContextApp(null);}}><MoveRight size={15}/> Move to next Home Screen page</button>
           <button onClick={()=>{const next=[...safeDockIds.filter(id=>id!==contextApp),contextApp].slice(-4);setSavedDockIds(next);setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setPanel(null);setContextApp(null);}}><Smartphone size={15}/> Move to dock</button>
           <button onClick={()=>{setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setSavedDockIds(current=>Array.isArray(current)?current.filter(id=>id!==contextApp):[]);setPanel(null);setContextApp(null);}}><X size={15}/> Remove from Home Screen</button>
           <button onClick={()=>{const app=apps.find(item=>item.id===contextApp);if(app?.defaultInstalled){onUninstallApp(contextApp);return;}const id=contextApp;setPanel(null);setContextApp(null);onUninstallApp(id);}}><Trash2 size={15}/> Uninstall app</button>
