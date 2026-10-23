@@ -81,6 +81,14 @@ Deno.serve(async (request: Request) => {
     return json({ error: "call_expired" }, 409, origin);
   }
 
+  // A server-enforced per-user quota limits repeated TURN credential minting.
+  const { error: quotaError } = await supabase.from("aeroshell_turn_credential_requests")
+    .insert({ user_id: userData.user.id, call_id: callId });
+  if (quotaError) {
+    const rateLimited = quotaError.code === "54000" || /too many relay credential requests/i.test(quotaError.message);
+    return json({ error: rateLimited ? "rate_limited" : "relay_authorization_failed" }, rateLimited ? 429 : 503, origin);
+  }
+
   const turnKeyId = Deno.env.get("CLOUDFLARE_TURN_KEY_ID");
   const turnApiToken = Deno.env.get("CLOUDFLARE_TURN_API_TOKEN");
   if (!turnKeyId || !turnApiToken) return json({ error: "private_relay_not_configured" }, 503, origin);
