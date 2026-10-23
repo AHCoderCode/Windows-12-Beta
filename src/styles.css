@@ -1471,3 +1471,18 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-privacy-context svg{flex:0 0 auto;margin-top:1px;color:#b37a18}
 .master-chat-privacy-context b{color:var(--text)}
 .windows7-mode-shell .master-chat-privacy-context{background:#fff4d8;border-color:#dfcea3;color:#5c503a}
+
+/* Touchscreens have no reliable hover: keep per-message privacy controls visible. */
+@media (hover: none), (pointer: coarse) {
+  .master-chat-message-actions {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    margin-top: 5px;
+    justify-content: flex-start;
+  }
+  .master-chat-message-row.mine .master-chat-message-actions {
+    justify-content: flex-end;
+  }
+}
