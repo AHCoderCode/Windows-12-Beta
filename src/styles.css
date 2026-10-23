@@ -818,3 +818,16 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 @media(max-width:620px){.ios-widget-grid{gap:7px;margin-bottom:12px}.ios-widget{min-height:105px;padding:10px;border-radius:17px}.ios-widget-label{font-size:9px}.ios-widget>strong{font-size:clamp(20px,6vw,28px)}.ios-widget-calendar>strong,.ios-widget-reminders>strong{font-size:32px}.ios-widget-music>strong,.ios-widget-quick>strong{font-size:15px}.ios-widget>small{font-size:8px}.ios-switcher-grid{gap:10px;padding:11px}.ios-switcher-card{flex-basis:min(78vw,300px);width:min(78vw,300px);border-radius:21px}.ios-switcher-preview{height:clamp(275px,51dvh,440px);min-height:275px;padding:11px}.ios-switcher-close{top:11px;right:11px}}
 @media(max-width:370px){.ios-widget{min-height:98px;padding:8px}.ios-widget-label{font-size:8px}.ios-widget>small{font-size:8px}.ios-switcher-card{flex-basis:84vw;width:84vw}.ios-home-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.ios-home-actions button{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.ios-shell.is-editing .ios-app-icon .ios-icon-art{animation:none}.ios-widget{transition:none}}
+
+
+/* Compact Home Screen utility buttons keep the layout phone-native instead of looking like a web toolbar. */
+.ios-greeting{display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between;gap:9px;margin:2px 4px 16px}
+.ios-greeting-copy{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:4px}
+.ios-greeting-copy>span{font-size:12px;font-weight:650;letter-spacing:.1px;color:#f2f4ffda}
+.ios-greeting-copy>strong{font-size:clamp(36px,8vw,56px);line-height:1;font-weight:620;letter-spacing:-2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ios-greeting-copy>small{margin-top:3px;color:#f2f4ffac;font-size:10px}
+.ios-home-utility-actions{display:flex;flex:0 0 auto;align-items:center;gap:5px;padding-top:2px}
+.ios-home-utility-actions button{display:grid;place-items:center;width:31px;height:31px;padding:0;border:1px solid #ffffff27;border-radius:50%;background:#ffffff15;color:#fff;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.ios-home-utility-actions button:active{transform:scale(.94)}
+@media(max-width:620px){.ios-greeting{gap:6px;margin:1px 2px 13px}.ios-greeting-copy>span{font-size:10px}.ios-greeting-copy>strong{font-size:clamp(32px,8vw,45px);letter-spacing:-1.5px}.ios-greeting-copy>small{font-size:8px}.ios-home-utility-actions{gap:4px}.ios-home-utility-actions button{width:28px;height:28px}}
+@media(max-width:350px){.ios-home-utility-actions{gap:3px}.ios-home-utility-actions button{width:25px;height:25px}.ios-greeting-copy>strong{font-size:30px}.ios-greeting-copy>small{max-width:125px}}
