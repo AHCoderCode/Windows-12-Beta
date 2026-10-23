@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
-import { filterMeteredTurnServers } from './master-chat-turn-utils';
 
 type ChatProfile = { id: string; username: string };
 type CallRow = {
@@ -128,7 +127,17 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       }
       throw new Error('Could not prepare the secure voice relay. No call was connected. Please try again after the server relay issue is fixed.');
     }
-    const turnServers = filterMeteredTurnServers(data?.iceServers);
+    const returnedServers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
+    const turnServers: RTCIceServer[] = returnedServers.flatMap(server => {
+      const allUrls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      const urls = allUrls.filter((url): url is string =>
+        typeof url === 'string'
+        && /^turns?:[a-z0-9.-]+\\.relay\\.metered\\.ca:\\d+(?:\\?transport=(?:tcp|udp))?$/i.test(url.trim()),
+      );
+      if (!urls.length || typeof server.username !== 'string' || !server.username.trim()
+        || typeof server.credential !== 'string' || !server.credential.trim()) return [];
+      return [{ urls: urls.length === 1 ? urls[0] : urls, username: server.username, credential: server.credential }];
+    });
     if (!turnServers.length) {
       throw new Error('The free relay did not return valid TURN credentials. Direct connections remain blocked for privacy. Verify the Metered credential, wait up to two minutes after creating it, then retry.');
     }
