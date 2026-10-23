@@ -114,7 +114,7 @@ export function IOSExperience({
     () => apps.filter(app => installed.includes(app.id)),
     [apps, installed],
   );
-  const homeApps = useMemo(() => installedApps.filter(app => !safeHiddenApps.includes(app.id)), [installedApps, safeHiddenApps]);
+  const homeApps = useMemo(() => installedApps.filter(app => !safeHiddenApps.includes(app.id) && !safeDockIds.includes(app.id)), [installedApps, safeHiddenApps, safeDockIds]);
   const homePages = useMemo(() => homeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? Math.min(50, safeHomePages[app.id]) : Math.floor(index / 16) })), [homeApps, safeHomePages]);
   const homePageCount = Math.max(1, Math.ceil(homeApps.length / 16), ...homePages.map(item => item.page + 1));
   const visibleHomeApps = homePages.filter(item => item.page === page).map(item => item.app);
@@ -236,6 +236,37 @@ export function IOSExperience({
     gesture.current = { x: event.clientX, y: event.clientY, target: target.closest('.ios-icon-grid') ? 'grid' : 'home' };
   };
 
+  useEffect(() => { setPage(current => Math.max(0, Math.min(current, homePageCount - 1))); }, [homePageCount]);
+  useEffect(() => {
+    if (!activeApp || !iosPrefs.gestures) return;
+    let start: { x:number; y:number; pointerId:number } | null = null;
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.window.ios-app-window') || event.clientY < window.innerHeight - 112) return;
+      if (target.closest('input,textarea,select,canvas,button,[contenteditable="true"],video,audio')) return;
+      start = { x:event.clientX, y:event.clientY, pointerId:event.pointerId };
+    };
+    const onUp = (event: PointerEvent) => {
+      const origin = start;
+      start = null;
+      if (!origin || origin.pointerId !== event.pointerId) return;
+      const dx = event.clientX-origin.x, dy = event.clientY-origin.y;
+      if (dy < -48 && Math.abs(dx) < 100) {
+        event.preventDefault();
+        setPanel('switcher');
+        setContextApp(null);
+      }
+    };
+    const onCancel = () => { start = null; };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+  }, [activeApp, iosPrefs.gestures]);
   const statusGestureStart = (event: ReactPointerEvent<HTMLDivElement>) => { if (!iosPrefs.gestures) return; gesture.current = { x: event.clientX, y: event.clientY, target: 'status' }; };
   const statusGestureEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!iosPrefs.gestures) { gesture.current = null; return; }
