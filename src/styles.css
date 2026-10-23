@@ -1486,3 +1486,40 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
     justify-content: flex-end;
   }
 }
+
+
+/* True fullscreen window and browser fullscreen support. Maximize fills every pixel
+   of the desktop viewport; the title-bar toggle also requests native browser fullscreen. */
+.window.maximized{
+  position:absolute!important;
+  inset:0!important;
+  width:auto!important;
+  height:auto!important;
+  min-width:0!important;
+  min-height:0!important;
+  max-width:none!important;
+  max-height:none!important;
+  border-radius:0!important;
+  resize:none!important;
+}
+.window.maximized .window-content{
+  flex:1 1 auto;
+  width:100%;
+  height:100%;
+  min-width:0;
+  min-height:0;
+}
+
+
+/* In true fullscreen, remove the simulated system chrome as well as browser chrome.
+   Escape or Restore exits fullscreen and the desktop/taskbar return automatically. */
+.desktop.fullscreen-window-open .desktop-shortcuts,
+.desktop.fullscreen-window-open .desktop-bottom-actions,
+.desktop.fullscreen-window-open .welcome-chip,
+.desktop.fullscreen-window-open>.taskbar,
+.desktop.fullscreen-window-open>.taskbar-fluid{
+  display:none!important;
+}
+.desktop.fullscreen-window-open .window.maximized{
+  z-index:2147483000!important;
+}
