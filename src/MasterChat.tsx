@@ -296,8 +296,9 @@ export function MasterChat() {
         <ol>
           <li>Create a project at <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Supabase Dashboard</a>.</li>
           <li>Run supabase/master-chat.sql in the project's SQL Editor.</li>
-          <li>Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to the local .env and Vercel project environment variables.</li>
-          <li>Turn off email confirmation in Supabase Auth for username-only accounts, then redeploy.</li>
+          <li>In Supabase Realtime settings, turn off Allow public access so private-channel authorization is enforced.</li>
+          <li>In Supabase Auth email-provider settings, turn off email confirmation for username-only accounts. These app-only identities cannot receive password-reset emails.</li>
+          <li>Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to Vercel Project Settings → Environment Variables for Preview and Production, then redeploy.</li>
         </ol>
         <p className="hint">Only the public publishable key belongs in frontend settings. Never put a Supabase service-role key in website code or Vercel's VITE_ variables.</p>
       </div>
