@@ -34,6 +34,6 @@ if (!/const CACHE_NAME = '[^']+';/.test(sw)) {
   throw new Error('Could not find the service-worker cache name declaration.');
 }
 sw = sw.replace(/const CACHE_NAME = '[^']+';/, `const CACHE_NAME = '${cacheName}';`);
-sw = sw.replace(/const SHELL_ASSETS = \\[[^\\]]*\\];/, declaration);
+sw = sw.replace(/const SHELL_ASSETS = \[[^\]]*\];/, declaration);
 await writeFile(swPath, sw);
 console.log('Prepared offline cache for ' + assets.length + ' local assets.');
