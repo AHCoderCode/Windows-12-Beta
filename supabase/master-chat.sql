@@ -74,8 +74,16 @@ drop policy if exists "Authenticated users can access the Master Chat presence c
 drop policy if exists "Authenticated users can read the Master Chat presence channel" on realtime.messages;
 drop policy if exists "Authenticated users can publish to the Master Chat presence channel" on realtime.messages;
 create policy "Authenticated users can read the Master Chat presence channel"
-  on realtime.messages for select to authenticated using (true);
+  on realtime.messages for select to authenticated
+  using (
+    (select realtime.topic()) = 'aeroshell-master-chat-presence'
+    and realtime.messages.extension = 'presence'
+  );
 create policy "Authenticated users can publish to the Master Chat presence channel"
-  on realtime.messages for insert to authenticated with check (true);
+  on realtime.messages for insert to authenticated
+  with check (
+    (select realtime.topic()) = 'aeroshell-master-chat-presence'
+    and realtime.messages.extension = 'presence'
+  );
 
 -- Never put the Supabase service-role/secret key in browser code.
