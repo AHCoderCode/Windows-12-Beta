@@ -8,8 +8,8 @@ type AuthMode = 'signin' | 'signup';
 
 const supabaseClient = (() => {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-  if (!url || !key || !/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) return null;
+  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+  if (!url || !key || !/^https?:\\/\\/(?:[a-z0-9-]+\\.supabase\\.co|localhost(?::\\d+)?|127\\.0\\.0\\.1(?::\\d+)?)(?:\\/.*)?$/i.test(url)) return null;
   try {
     return createClient(url, key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -120,7 +120,7 @@ export function MasterChat() {
   useEffect(() => {
     if (!supabaseClient || !session || !profile) return;
     let channel: RealtimeChannel | null = null;
-    channel = supabaseClient.channel('aeroshell-master-chat-presence', { config: { presence: { key: profile.id } } });
+    channel = supabaseClient.channel('aeroshell-master-chat-presence', { config: { presence: { key: profile.id }, private: true } });
     channel.on('presence', { event: 'sync' }, () => {
       const entries = Object.values(channel?.presenceState<{ user_id: string }>() ?? {}).flat();
       setOnlineIds(Array.from(new Set(entries.map(entry => entry.user_id).filter(Boolean))));
