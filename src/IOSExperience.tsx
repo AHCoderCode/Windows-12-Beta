@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  AppWindow, ArrowRight, BatteryFull, Bell, Bluetooth, Check, ChevronRight, Clock3, Grid2X2, Home, Lock, Moon,
-  Monitor, Power, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sun, Unlock, Volume2, Wifi, X
+  AppWindow, ArrowRight, BatteryFull, Bell, Bluetooth, CalendarDays, Check, ChevronRight, Clock3, Grid2X2, Home, ListTodo, Lock, Moon, MoveRight, Music, Plus,
+  Monitor, Power, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sun, Trash2, Unlock, Volume2, Wifi, X
 } from 'lucide-react';
 import { getAppCategories, normalizeAppCategory } from './app-catalog';
 
@@ -48,6 +48,7 @@ type IOSExperienceProps = {
   onHome: () => void;
   onSwitchApp: (windowId: number, appId: string) => void;
   onCloseApp: (windowId: number, appId: string) => void;
+  onUninstallApp: (appId: string) => void;
   onSwitchMode: (mode: Mode) => void;
 };
 
@@ -80,13 +81,18 @@ const formatClock = (date: Date, hour12 = false) =>
 
 export function IOSExperience({
   apps, installed, runningApps, activeApp, clock, iosPrefs, sharedPrefs,
-  onUpdateIOSPrefs, onUpdateSharedPrefs, onLaunchApp, onHome, onSwitchApp, onCloseApp, onSwitchMode,
+  onUpdateIOSPrefs, onUpdateSharedPrefs, onLaunchApp, onHome, onSwitchApp, onCloseApp, onUninstallApp, onSwitchMode,
 }: IOSExperienceProps) {
-  const [panel, setPanel] = useState<'library' | 'control' | 'notifications' | 'switcher' | 'icon-menu' | null>(null);
+  const [panel, setPanel] = useState<'library' | 'control' | 'notifications' | 'switcher' | 'icon-menu' | 'widgets' | null>(null);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryCategory, setLibraryCategory] = useState('All');
   const [installedOnly, setInstalledOnly] = useState(false);
   const [page, setPage] = useState(0);
+  const [hiddenHomeApps, setHiddenHomeApps] = useSavedLocal<string[]>('aeroshell.ios27.hidden-home-apps.v1', []);
+  const [homeAppPages, setHomeAppPages] = useSavedLocal<Record<string, number>>('aeroshell.ios27.home-pages.v1', {});
+  const [savedDockIds, setSavedDockIds] = useSavedLocal<string[]>('aeroshell.ios27.dock.v1', ['store', 'explorer', 'settings', 'notes']);
+  const [widgetIds, setWidgetIds] = useSavedLocal<string[]>('aeroshell.ios27.widgets.v1', ['clock', 'calendar', 'reminders', 'music']);
+
   const [locked, setLocked] = useState(false);
   const [contextApp, setContextApp] = useState<string | null>(null);
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
@@ -95,10 +101,20 @@ export function IOSExperience({
   const indicatorSwipe = useRef<{ y: number } | null>(null);
   const didSwipeHomeIndicator = useRef(false);
 
+  const safeHiddenApps = Array.isArray(hiddenHomeApps) ? hiddenHomeApps : [];
+  const safeHomePages = homeAppPages && typeof homeAppPages === 'object' && !Array.isArray(homeAppPages) ? homeAppPages : {};
+  const safeDockIds = Array.isArray(savedDockIds) ? savedDockIds : ['store', 'explorer', 'settings', 'notes'];
+  const safeWidgetIds = Array.isArray(widgetIds) ? widgetIds.filter(id => ['clock', 'calendar', 'reminders', 'music', 'quick'].includes(id)) : ['clock', 'calendar', 'reminders', 'music'];
   const installedApps = useMemo(
     () => apps.filter(app => installed.includes(app.id)),
     [apps, installed],
   );
+  const homeApps = useMemo(() => installedApps.filter(app => !safeHiddenApps.includes(app.id)), [installedApps, safeHiddenApps]);
+  const homePages = useMemo(() => homeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? Math.min(50, safeHomePages[app.id]) : Math.floor(index / 16) })), [homeApps, safeHomePages]);
+  const homePageCount = Math.max(1, Math.ceil(homeApps.length / 16), ...homePages.map(item => item.page + 1));
+  const visibleHomeApps = homePages.filter(item => item.page === page).map(item => item.app);
+  const dockIds = useMemo(() => safeDockIds.filter(id => installed.includes(id)).slice(-4), [safeDockIds, installed]);
+  const openTaskCount = (() => { try { const value = JSON.parse(localStorage.getItem('aeroshell.tasks.v1') ?? '[]'); return Array.isArray(value) ? value.filter((task: { done?: boolean }) => !task.done).length : 0; } catch { return 0; } })();
   const categories = useMemo(() => ['All', ...getAppCategories(apps)], [apps]);
   const filteredApps = useMemo(() => apps.filter(app => {
     if (installedOnly && !installed.includes(app.id)) return false;
@@ -108,10 +124,6 @@ export function IOSExperience({
   }), [apps, installed, installedOnly, libraryCategory, libraryQuery]);
   const activeAppDef = apps.find(app => app.id === activeApp);
   const wallpaperClass = iosPrefs.wallpaper==='custom'?'ios-wallpaper-custom':WALLPAPERS.find(item => item.id === iosPrefs.wallpaper)?.className ?? 'ios-wallpaper-aurora';
-  const dockIds = useMemo(() => {
-    const pinned = ['store', 'explorer', 'settings', 'notes', 'calculator', 'paint', 'games', 'browser'];
-    return pinned.filter(id => installed.includes(id)).slice(0, 5);
-  }, [installed]);
   const running = useMemo(() => [...runningApps].reverse(), [runningApps]);
 
   const showPanel = (next: typeof panel) => {
@@ -141,6 +153,10 @@ export function IOSExperience({
   useEffect(() => () => {
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
   }, []);
+  useEffect(() => {
+    setHiddenHomeApps(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : []);
+    setSavedDockIds(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : ['store', 'explorer', 'settings', 'notes']);
+  }, [installed, setHiddenHomeApps, setSavedDockIds]);
 
   const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
     if (!iosPrefs.gestures) return;
@@ -153,11 +169,11 @@ export function IOSExperience({
     if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current;
     gesture.current = null;
-    if (!start || panel || locked) return;
+    if (!start || start.target === 'status' || panel || locked) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
     if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.2 && start.target === 'grid') {
-      const pages = Math.max(1, Math.ceil(installedApps.length / 20));
+      const pages = homePageCount;
       setPage(current => Math.max(0, Math.min(pages - 1, current + (dx < 0 ? 1 : -1))));
       return;
     }
@@ -176,9 +192,9 @@ export function IOSExperience({
     const start = indicatorSwipe.current; indicatorSwipe.current = null;
     if (!start) return;
     const delta = event.clientY - start.y;
-    if (delta < -105) {
+    if (delta < -70) {
       didSwipeHomeIndicator.current = true;
-      if (delta < -185) showPanel('switcher');
+      if (delta < -145) showPanel('switcher');
       else onHome();
     }
   };
@@ -188,7 +204,7 @@ export function IOSExperience({
     backgroundImage: iosPrefs.wallpaper === 'custom' && iosPrefs.customWallpaper ? 'linear-gradient(#07101f22,#07101f44),url("' + iosPrefs.customWallpaper + '")' : undefined,
   } as CSSProperties;
 
-  return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+wallpaperClass} style={shellStyle} data-ios-shell="true"
+  return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+(panel==='icon-menu'?'is-editing ':'')+wallpaperClass} style={shellStyle} data-ios-shell="true"
     onPointerDown={homeGestureStart} onPointerUp={homeGestureEnd} onPointerCancel={() => { gesture.current = null; }}>
     <div className="ios-wallpaper-glow" aria-hidden="true"/>
     {(!activeApp || panel==='switcher') && !locked && <div className="ios-status-bar" onPointerDown={statusGestureStart} onPointerUp={statusGestureEnd}>
@@ -207,9 +223,17 @@ export function IOSExperience({
         <button onClick={() => showPanel('library')}><Search size={15}/> App Library</button>
         <button onClick={() => showPanel('notifications')}><Bell size={15}/> Notifications</button>
         <button onClick={() => showPanel('control')}><Sun size={15}/> Control Center</button>
+        <button onClick={() => showPanel('widgets')}><Plus size={15}/> Edit Widgets</button>
+      </div>
+      <div className="ios-widget-grid" aria-label="Home screen widgets">
+        {safeWidgetIds.map(id => id === 'clock' ? <button key={id} className="ios-widget ios-widget-clock" onClick={() => launch('clock')}><span className="ios-widget-label"><Clock3 size={14}/> World time</span><strong>{formatClock(clock, true)}</strong><small>{clock.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</small></button>
+          : id === 'calendar' ? <button key={id} className="ios-widget ios-widget-calendar" onClick={() => launch('calendar')}><span className="ios-widget-label"><CalendarDays size={14}/> Calendar</span><strong>{clock.toLocaleDateString([], { day: '2-digit' })}</strong><small>{clock.toLocaleDateString([], { weekday: 'long', month: 'long' })}</small></button>
+          : id === 'reminders' ? <button key={id} className="ios-widget ios-widget-reminders" onClick={() => launch('tasks')}><span className="ios-widget-label"><ListTodo size={14}/> Reminders</span><strong>{openTaskCount}</strong><small>{openTaskCount === 1 ? 'task to complete' : 'tasks to complete'}</small></button>
+          : id === 'music' ? <button key={id} className="ios-widget ios-widget-music" onClick={() => launch('music')}><span className="ios-widget-label"><Music size={14}/> Now Playing</span><strong>Media Player</strong><small>Tap to open your audio library</small></button>
+          : <button key={id} className="ios-widget ios-widget-quick" onClick={() => showPanel('control')}><span className="ios-widget-label"><Sun size={14}/> Quick controls</span><strong>Control Center</strong><small>Brightness, volume and appearance</small></button>)}
       </div>
       <div className="ios-icon-grid" aria-label="Installed applications">
-        {installedApps.slice(page * 20, page * 20 + 20).map(app => {
+        {visibleHomeApps.map(app => {
           const Icon = app.Icon;
           return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current) { longPressedRef.current = false; return; } launch(app.id); }}
             onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel('icon-menu'); }}
@@ -220,7 +244,7 @@ export function IOSExperience({
         })}
       </div>
       <div className="ios-home-pagination" aria-label="Home screen pages">
-        {Array.from({ length: Math.max(1, Math.ceil(installedApps.length / 20)) }, (_, index) => <button key={index} className={page === index ? 'active' : ''} aria-label={'Go to home page '+(index+1)} onClick={() => setPage(index)} />)}
+        {Array.from({ length: homePageCount }, (_, index) => <button key={index} className={page === index ? 'active' : ''} aria-label={'Go to home page '+(index+1)} onClick={() => setPage(index)} />)}
       </div>
       <div className="ios-dock" aria-label="Application dock">
         {dockIds.map(id => { const app = apps.find(item => item.id === id); if (!app) return null; const Icon = app.Icon; return <button key={id} className="ios-dock-icon" aria-label={'Open '+app.title} title={app.title} onClick={() => launch(id)}><span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24}/></span></button>; })}
@@ -243,7 +267,7 @@ export function IOSExperience({
     {panel && !locked && <div className={'ios-panel-overlay ios-panel-'+panel} role="dialog" aria-modal="true" aria-label={panel==='library'?'App Library':panel==='control'?'Control Center':panel==='notifications'?'Notification Center':panel==='switcher'?'App Switcher':'App actions'}>
       <button className="ios-panel-backdrop" aria-label="Close panel" onClick={() => { setPanel(null); setContextApp(null); }}/>
       <section className="ios-panel-card">
-        <header className="ios-panel-heading"><div><span className="ios-panel-grabber"/><h2>{panel==='library'?'App Library':panel==='control'?'Control Center':panel==='notifications'?'Notification Center':panel==='switcher'?'App Switcher':contextApp ? apps.find(app=>app.id===contextApp)?.title : 'App actions'}</h2></div><button className="ios-panel-close" onClick={() => { setPanel(null); setContextApp(null); }} aria-label="Close panel"><X size={17}/></button></header>
+        <header className="ios-panel-heading"><div><span className="ios-panel-grabber"/><h2>{panel==='library'?'App Library':panel==='control'?'Control Center':panel==='notifications'?'Notification Center':panel==='switcher'?'App Switcher':panel==='widgets'?'Edit Home Widgets':contextApp ? apps.find(app=>app.id===contextApp)?.title : 'App actions'}</h2></div><button className="ios-panel-close" onClick={() => { setPanel(null); setContextApp(null); }} aria-label="Close panel"><X size={17}/></button></header>
 
         {panel==='library' && <>
           <label className="ios-library-search"><Search size={16}/><input value={libraryQuery} onChange={event=>setLibraryQuery(event.target.value)} placeholder="Search all apps" aria-label="Search apps"/></label>
@@ -273,14 +297,29 @@ export function IOSExperience({
           <button className="ios-secondary-action" onClick={()=>onUpdateIOSPrefs({notifications:!iosPrefs.notifications})}>{iosPrefs.notifications?'Turn notifications off':'Turn notifications on'}</button>
         </div>}
 
+        {panel==='widgets' && <div className="ios-widget-editor">
+          <p>Choose the glanceable widgets shown on your Home Screen. Tap a widget to open its app or controls.</p>
+          {[
+            {id:'clock',title:'Clock',description:'Current time and date',Icon:Clock3},
+            {id:'calendar',title:'Calendar',description:'Today at a glance',Icon:CalendarDays},
+            {id:'reminders',title:'Reminders',description:'Open tasks from your local list',Icon:ListTodo},
+            {id:'music',title:'Now Playing',description:'Shortcut to Media Player',Icon:Music},
+            {id:'quick',title:'Quick Controls',description:'Open simulated Control Center',Icon:Sun},
+          ].map(widget=>{const Icon=widget.Icon;const enabled=safeWidgetIds.includes(widget.id);return <button key={widget.id} className={'ios-widget-option '+(enabled?'selected':'')} onClick={()=>setWidgetIds(current=>{const list=Array.isArray(current)?current:[];return list.includes(widget.id)?list.filter(id=>id!==widget.id):[...list,widget.id];})}><span className="ios-widget-option-icon"><Icon size={18}/></span><span><b>{widget.title}</b><small>{widget.description}</small></span>{enabled?<Check size={17}/>:<Plus size={17}/>}</button>;})}
+          <p className="ios-hint">Widgets run locally and use your saved AeroShell data. Weather, device battery health and system sensors are not read from your actual device.</p>
+        </div>}
+
         {panel==='switcher' && <div className="ios-switcher-grid">{running.map(win=>{const app=apps.find(item=>item.id===win.app);if(!app)return null;const Icon=app.Icon;return <article key={win.id} className="ios-switcher-card"><button className="ios-switcher-preview" onClick={()=>{onSwitchApp(win.id,win.app);setPanel(null);}}><div className="ios-preview-top"><span className="ios-icon-art" style={{'--app-color':app.color} as CSSProperties}><Icon size={21}/></span><span>{app.title}</span></div><div className="ios-preview-lines"><i/><i/><i/></div><div className="ios-preview-label">{app.description}</div></button><button className="ios-switcher-close" onClick={()=>onCloseApp(win.id,win.app)} aria-label={'Close '+app.title}><X size={15}/></button><button className="ios-switcher-return" onClick={()=>{onSwitchApp(win.id,win.app);setPanel(null);}}>Return to {app.title}</button></article>;})}{!running.length&&<div className="ios-empty"><AppWindow size={26}/><b>No open apps</b><span>Apps you open will appear here, ready to resume.</span><button onClick={()=>setPanel('library')}>Browse App Library</button></div>}</div>}
 
         {panel==='icon-menu' && contextApp && <div className="ios-icon-action-menu">
           <p>{apps.find(app=>app.id===contextApp)?.description}</p>
           <button onClick={()=>launch(contextApp)}><ArrowRight size={15}/> Open app</button>
+          <button onClick={()=>{const index=homeApps.findIndex(app=>app.id===contextApp);const currentPage=Number.isInteger(safeHomePages[contextApp])?Math.min(50,safeHomePages[contextApp]):Math.max(0,Math.floor(index/16));const nextPage=Math.min(50,currentPage+1);setHomeAppPages(current=>({...((current&&typeof current==='object')?current:{}),[contextApp]:nextPage}));setPage(nextPage);setPanel(null);setContextApp(null);}}><MoveRight size={15}/> Move to next Home Screen page</button>
+          <button onClick={()=>{const next=[...safeDockIds.filter(id=>id!==contextApp),contextApp].slice(-4);setSavedDockIds(next);setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setPanel(null);setContextApp(null);}}><Smartphone size={15}/> Move to dock</button>
+          <button onClick={()=>{setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setSavedDockIds(current=>Array.isArray(current)?current.filter(id=>id!==contextApp):[]);setPanel(null);setContextApp(null);}}><X size={15}/> Remove from Home Screen</button>
+          <button onClick={()=>{const id=contextApp;setPanel(null);setContextApp(null);onUninstallApp(id);}}><Trash2 size={15}/> Uninstall app</button>
           <button onClick={()=>{setPanel('library');setLibraryQuery(apps.find(app=>app.id===contextApp)?.title??'');}}><Search size={15}/> Find in App Library</button>
-          <button onClick={()=>onSwitchMode('windows12')}><Monitor size={15}/> Switch to Windows 12</button>
-        </div>}
+        </div>
       </section>
     </div>}
 
