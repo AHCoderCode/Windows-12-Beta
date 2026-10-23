@@ -322,7 +322,7 @@ export function IOSExperience({
           <button onClick={()=>{setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setSavedDockIds(current=>Array.isArray(current)?current.filter(id=>id!==contextApp):[]);setPanel(null);setContextApp(null);}}><X size={15}/> Remove from Home Screen</button>
           <button onClick={()=>{const id=contextApp;setPanel(null);setContextApp(null);onUninstallApp(id);}}><Trash2 size={15}/> Uninstall app</button>
           <button onClick={()=>{setPanel('library');setLibraryQuery(apps.find(app=>app.id===contextApp)?.title??'');}}><Search size={15}/> Find in App Library</button>
-        </div>
+        </div>}
       </section>
     </div>}
 
