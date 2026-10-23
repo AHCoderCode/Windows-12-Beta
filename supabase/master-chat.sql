@@ -27,6 +27,10 @@ create index if not exists aeroshell_messages_recipient_created_idx on public.ae
 alter table public.aeroshell_profiles enable row level security;
 alter table public.aeroshell_messages enable row level security;
 
+grant usage on schema public to authenticated;
+grant select on public.aeroshell_profiles to authenticated;
+grant select, insert on public.aeroshell_messages to authenticated;
+
 drop policy if exists "Authenticated users can discover profiles" on public.aeroshell_profiles;
 create policy "Authenticated users can discover profiles" on public.aeroshell_profiles for select to authenticated using (true);
 
@@ -64,5 +68,10 @@ begin
   end if;
 end;
 $$;
+
+-- Private Realtime presence is restricted to authenticated chat accounts.
+drop policy if exists "Authenticated users can access the Master Chat presence channel" on realtime.messages;
+create policy "Authenticated users can access the Master Chat presence channel"
+  on realtime.messages for all to authenticated using (true) with check (true);
 
 -- Never put the Supabase service-role/secret key in browser code.
