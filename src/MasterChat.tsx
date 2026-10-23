@@ -584,7 +584,12 @@ export function MasterChat({ iosMode = false }: { iosMode?: boolean } = {}) {
   }, []);
 
   useEffect(() => {
-    if (!iosMode || !activePerson || !pinUnlocked) setConversationFullscreen(false);
+    if (iosMode && activePerson && pinUnlocked) return;
+    setConversationFullscreen(false);
+    if (chatRootRef.current && document.fullscreenElement === chatRootRef.current) {
+      nativeChatFullscreenRef.current = false;
+      void document.exitFullscreen().catch(() => undefined);
+    }
   }, [iosMode, activePerson, pinUnlocked]);
 
   const lockApp = () => {
