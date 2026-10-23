@@ -132,7 +132,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     if (!turnServers.length) {
       throw new Error('The free relay did not return valid TURN credentials. Direct connections remain blocked for privacy. Verify the Metered credential, wait up to two minutes after creating it, then retry.');
     }
-
+    return turnServers;
   }, [client]);
 
   const sendSignal = useCallback(async (call: CallView, kind: CallSignal['kind'], payload: Record<string, unknown>) => {
