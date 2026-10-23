@@ -1076,3 +1076,32 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .setup-screen.setup-classic-desktop .setup-primary,
   .setup-screen.setup-classic-desktop .setup-back{animation:none!important;transition:none!important}
 }
+
+
+/* Classic Windows-style local account sign-in */
+.classic-login-screen{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;padding:24px;background:#f4f4f4;color:#171717;font-family:"Segoe UI",Arial,sans-serif}
+.classic-login-panel{width:min(100%,410px);padding:32px;background:#fff;border:1px solid #c9c9c9;box-shadow:0 12px 42px #00000014}
+.classic-login-logo{width:54px;height:54px;display:grid;place-items:center;margin:0 auto 18px;border:1px solid #c7c7c7;color:#333}
+.classic-login-panel h1{margin:0;text-align:center;font-size:25px;font-weight:500;letter-spacing:-.4px}
+.classic-login-panel>p{text-align:center;margin:7px 0 24px;color:#555;font-size:14px}
+.classic-login-user{display:flex;align-items:center;gap:12px;padding:14px 0 20px;border-bottom:1px solid #e2e2e2;margin-bottom:20px}
+.classic-login-avatar{width:44px;height:44px;display:grid;place-items:center;background:#e8e8e8;border:1px solid #c8c8c8;font-size:20px}
+.classic-login-user strong,.classic-login-user small{display:block}
+.classic-login-user strong{font-size:15px;font-weight:600}
+.classic-login-user small{margin-top:3px;color:#666;font-size:12px}
+.classic-login-panel form{display:flex;flex-direction:column;gap:9px}
+.classic-login-panel form label{font-size:13px;font-weight:600}
+.classic-login-panel form input{height:42px;width:100%;padding:9px 11px;border:1px solid #8c8c8c;border-radius:0;background:#fff;color:#171717;font:inherit;outline-offset:2px}
+.classic-login-submit{align-self:flex-end;display:flex;align-items:center;gap:8px;min-height:37px;padding:0 15px;border:1px solid #777;border-radius:0;background:#f3f3f3;color:#171717;font:inherit;font-size:13px;cursor:pointer}
+.classic-login-submit:hover{background:#e8e8e8}
+.classic-login-error{margin:2px 0;color:#a32020;font-size:12px}
+.classic-login-footnote{display:block;margin-top:24px;padding-top:15px;border-top:1px solid #e2e2e2;color:#666;font-size:11px;line-height:1.55}
+.setup-account-password{margin-top:18px;padding:16px;border:1px solid #d4d4d4;background:#fafafa}
+.setup-account-password>div:first-child b,.setup-account-password>div:first-child small{display:block}
+.setup-account-password>div:first-child b{font-size:14px}
+.setup-account-password>div:first-child small{margin-top:4px;color:#666;font-size:12px;line-height:1.5}
+.setup-account-password .setup-field{margin-top:12px}
+.setup-account-password .hint{font-size:12px;line-height:1.55}
+.settings-content .setting-card .setup-field{display:flex;flex-direction:column;gap:7px;margin:12px 0;font-size:13px;font-weight:600}
+.settings-content .setting-card .setup-field input{min-width:0;width:100%;max-width:440px;padding:10px 11px;border:1px solid var(--line,#777);border-radius:6px;background:var(--surface,#fff);color:inherit;font:inherit;font-weight:400}
+@media(max-width:520px){.classic-login-panel{padding:24px 20px}.classic-login-screen{padding:16px}.setup-account-password{padding:12px}}
