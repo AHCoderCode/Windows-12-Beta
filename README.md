@@ -167,9 +167,12 @@ Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. 
 
 1. Create a Supabase project at https://supabase.com/dashboard.
 2. Open SQL Editor and run the full file supabase/master-chat.sql.
-3. Under Authentication → Sign In / Providers → Email, disable email confirmation for this username-only beta. The login flow maps each username to a non-deliverable app identity; users cannot receive password-reset emails. Before public production, add real email verification/recovery, rate limits, abuse reporting and moderation.
-4. Copy .env.example to .env.local for local development and set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY. Add the same two variables to Vercel for Preview and Production, then redeploy.
-5. Share the deployed site. People create separate usernames/passwords, appear in the member list, and can send private real-time messages.
+3. In Supabase Realtime settings, turn off **Allow public access** so the app's private-channel authorization is enforced.
+4. Under Authentication → Sign In / Providers → Email, disable email confirmation for this username-only beta. The login flow maps each username to a non-deliverable app identity at the reserved .invalid domain; users cannot receive password-reset emails.
+5. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel Project Settings → Environment Variables for Preview and Production, then redeploy. For local development, copy .env.example to .env.local with the same values.
+6. Share the deployed site with a trusted tester. People create separate usernames/passwords, appear in the member list, and can send private real-time messages.
+
+Do not launch this as an open public chat without account recovery, blocking/reporting, abuse controls, rate limits and moderation. Until then, test only with people you know and do not share private personal information in messages.
 
 Only use the project's publishable key in VITE_SUPABASE_PUBLISHABLE_KEY. Never put the service-role/secret key in the client bundle. Row-level security allows authenticated users to discover usernames but read/create only messages where they are a participant. Passwords are managed by Supabase Auth, not stored in the app's profile/message tables.
 
