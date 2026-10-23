@@ -1465,3 +1465,9 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .master-chat-call-card{padding:25px 15px 18px}
   .master-chat-call-avatar{width:65px;height:65px}
 }
+
+
+.master-chat-privacy-context{display:flex;align-items:flex-start;gap:8px;padding:9px 15px;border-bottom:1px solid var(--border);background:color-mix(in srgb,#e9b34b 9%,var(--surface));color:var(--muted);font-size:10px;line-height:1.55}
+.master-chat-privacy-context svg{flex:0 0 auto;margin-top:1px;color:#b37a18}
+.master-chat-privacy-context b{color:var(--text)}
+.windows7-mode-shell .master-chat-privacy-context{background:#fff4d8;border-color:#dfcea3;color:#5c503a}
