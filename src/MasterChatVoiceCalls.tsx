@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
+import { filterMeteredTurnServers } from './master-chat-turn-utils';
 
 type ChatProfile = { id: string; username: string };
 type CallRow = {
@@ -120,23 +121,18 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         } catch { /* Some gateway errors do not return JSON. */ }
       }
       if (serviceCode === 'private_relay_not_configured') {
-        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN in the Supabase Edge Function secrets.');
+        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure METERED_TURN_DOMAIN and METERED_TURN_API_KEY in the Supabase Edge Function secrets.');
       }
       if (serviceCode === 'private_relay_unavailable' || serviceCode === 'backend_configuration_unavailable' || httpStatus === 503 || httpStatus === 502) {
-        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Cloudflare TURN credentials.');
+        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Metered TURN credential.');
       }
       throw new Error('Could not prepare the secure voice relay. No call was connected. Please try again after the server relay issue is fixed.');
     }
-    const servers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
-    const turnServers = servers.filter(server => {
-      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-      return typeof server.username === 'string' && typeof server.credential === 'string'
-        && urls.some(url => typeof url === 'string' && /^turns?:turn\.cloudflare\.com:/i.test(url));
-    });
+    const turnServers = filterMeteredTurnServers(data?.iceServers);
     if (!turnServers.length) {
-      throw new Error('Private relay credentials were not returned. Direct connections are blocked for privacy, so this call cannot start.');
+      throw new Error('The free relay did not return valid TURN credentials. Direct connections remain blocked for privacy. Verify the Metered credential, wait up to two minutes after creating it, then retry.');
     }
-    return turnServers;
+
   }, [client]);
 
   const sendSignal = useCallback(async (call: CallView, kind: CallSignal['kind'], payload: Record<string, unknown>) => {
