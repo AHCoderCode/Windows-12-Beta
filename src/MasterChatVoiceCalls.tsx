@@ -293,6 +293,12 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       createdCallId = data.id;
       const call: CallView = { ...data as CallRow, direction: 'outgoing', peer: activePerson };
       setCall(call);
+      if (ringTimerRef.current !== null) window.clearTimeout(ringTimerRef.current);
+      ringTimerRef.current = window.setTimeout(() => {
+        if (activeCallRef.current?.id === call.id && activeCallRef.current.status === 'ringing') {
+          void finishCall('ended', 'No answer. The call was closed after 45 seconds.');
+        }
+      }, 45_000);
       const servers = await turnServersForCall(call.id);
       const pc = buildPeerConnection(call, servers);
       local.getTracks().forEach(track => pc.addTrack(track, local));
