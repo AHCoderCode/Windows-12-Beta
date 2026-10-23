@@ -57,6 +57,10 @@ begin
 end;
 $$;
 
+-- The SECURITY DEFINER helper is only intended to run from its auth.users trigger.
+-- Prevent direct invocation through the database API by client roles.
+revoke all on function public.aeroshell_create_master_chat_profile() from public, anon, authenticated;
+
 drop trigger if exists aeroshell_auth_user_profile on auth.users;
 create trigger aeroshell_auth_user_profile after insert on auth.users
 for each row execute function public.aeroshell_create_master_chat_profile();
