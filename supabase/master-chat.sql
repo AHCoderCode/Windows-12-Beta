@@ -35,11 +35,11 @@ drop policy if exists "Authenticated users can discover profiles" on public.aero
 create policy "Authenticated users can discover profiles" on public.aeroshell_profiles for select to authenticated using (true);
 
 drop policy if exists "Participants can read their own messages" on public.aeroshell_messages;
-create policy "Participants can read their own messages" on public.aeroshell_messages for select to authenticated using (auth.uid() = sender_id or auth.uid() = recipient_id);
+create policy "Participants can read their own messages" on public.aeroshell_messages for select to authenticated using ((select auth.uid()) = sender_id or (select auth.uid()) = recipient_id);
 
 drop policy if exists "Send messages as yourself" on public.aeroshell_messages;
 create policy "Send messages as yourself" on public.aeroshell_messages for insert to authenticated
-with check (auth.uid() = sender_id and auth.uid() <> recipient_id and char_length(btrim(body)) between 1 and 2000);
+with check ((select auth.uid()) = sender_id and (select auth.uid()) <> recipient_id and char_length(btrim(body)) between 1 and 2000);
 
 create or replace function public.aeroshell_create_master_chat_profile()
 returns trigger language plpgsql security definer set search_path = ''
