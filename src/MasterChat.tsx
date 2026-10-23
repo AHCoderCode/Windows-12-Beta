@@ -1,10 +1,68 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { ArrowLeft, Check, CircleHelp, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, UserPlus, Users, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 
 type ChatProfile = { id: string; username: string };
 type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
 type AuthMode = 'signin' | 'signup';
+type PinRecord = { version: 1; salt: string; verifier: string };
+const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
+const PIN_THROTTLE_KEY = 'aeroshell.master-chat.pin-throttle.v1';
+
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(value: string) {
+  const result = new Uint8Array(value.length / 2);
+  for (let i = 0; i < result.length; i += 1) result[i] = parseInt(value.slice(i * 2, i * 2 + 2), 16);
+  return result;
+}
+
+async function derivePinVerifier(pin: string, saltHex: string) {
+  if (!globalThis.crypto?.subtle) throw new Error('Secure browser cryptography is unavailable. Open the site over HTTPS and try again.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: hexToBytes(saltHex), iterations: 310000, hash: 'SHA-256' },
+    key,
+    256,
+  );
+  return bytesToHex(new Uint8Array(bits));
+}
+
+function sameHex(left: string, right: string) {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < left.length; i += 1) mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return mismatch === 0;
+}
+
+function readPinThrottle() {
+  try {
+    const raw = localStorage.getItem(PIN_THROTTLE_KEY);
+    if (!raw) return { failures: 0, lockedUntil: 0 };
+    const value = JSON.parse(raw) as { failures?: unknown; lockedUntil?: unknown };
+    return {
+      failures: typeof value.failures === 'number' && Number.isFinite(value.failures) ? Math.max(0, Math.floor(value.failures)) : 0,
+      lockedUntil: typeof value.lockedUntil === 'number' && Number.isFinite(value.lockedUntil) ? Math.max(0, value.lockedUntil) : 0,
+    };
+  } catch {
+    return { failures: 0, lockedUntil: 0 };
+  }
+}
+
+function recordPinFailure() {
+  const previous = readPinThrottle();
+  const failures = previous.failures + 1;
+  const delayMs = failures < 5 ? 0 : Math.min(5 * 60 * 1000, 30 * 1000 * (2 ** Math.floor((failures - 5) / 5)));
+  const next = { failures, lockedUntil: delayMs ? Date.now() + delayMs : 0 };
+  try { localStorage.setItem(PIN_THROTTLE_KEY, JSON.stringify(next)); } catch { /* A device lock still works when storage writes are available. */ }
+  return next;
+}
+
+function clearPinFailures() {
+  try { localStorage.removeItem(PIN_THROTTLE_KEY); } catch { /* The PIN itself remains unchanged. */ }
+}
 
 const supabaseClient = (() => {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
@@ -52,7 +110,24 @@ export function MasterChat() {
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair'>('loading');
+  const [pinRecord, setPinRecord] = useState<PinRecord | null>(null);
+  const [pinUnlocked, setPinUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinCooldownUntil, setPinCooldownUntil] = useState(0);
+  const [pinNow, setPinNow] = useState(Date.now());
+  const [pinChangeOpen, setPinChangeOpen] = useState(false);
+  const [pinCurrentValue, setPinCurrentValue] = useState('');
+  const [pinNewValue, setPinNewValue] = useState('');
+  const [pinNewConfirmValue, setPinNewConfirmValue] = useState('');
+  const [pinChangeError, setPinChangeError] = useState('');
+  const [pinChangeBusy, setPinChangeBusy] = useState(false);
+  const [messageActionId, setMessageActionId] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
+  const lockAppRef = useRef<() => void>(() => undefined);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const tell = (text: string, kind: 'error' | 'success' | 'info' = 'info') => {
@@ -82,6 +157,30 @@ export function MasterChat() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PIN_STORAGE_KEY);
+      if (!raw) {
+        setPinMode('setup');
+      } else {
+        const value = JSON.parse(raw) as Partial<PinRecord>;
+        if (value.version === 1 && typeof value.salt === 'string' && /^[a-f0-9]{32}$/.test(value.salt) &&
+            typeof value.verifier === 'string' && /^[a-f0-9]{64}$/.test(value.verifier)) {
+          setPinRecord(value as PinRecord);
+          setPinMode('unlock');
+          setPinCooldownUntil(readPinThrottle().lockedUntil);
+        } else {
+          setPinMode('repair');
+          setPinError('The local PIN record is invalid. Resetting it only resets this browser lock; it does not recover or delete your account.');
+        }
+      }
+    } catch {
+      setPinMode('repair');
+      setPinError('Browser storage is unavailable. Master Chat stays locked because it cannot safely remember the local PIN.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!pinUnlocked) return;
     if (!supabaseClient) {
       setBooting(false);
       return;
@@ -120,10 +219,10 @@ export function MasterChat() {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadPeople, loadProfile]);
+  }, [loadPeople, loadProfile, pinUnlocked]);
 
   useEffect(() => {
-    if (!supabaseClient || !session || !profile) return;
+    if (!pinUnlocked || !supabaseClient || !session || !profile) return;
     let channel: RealtimeChannel | null = null;
     channel = supabaseClient.channel('aeroshell-master-chat-presence', { config: { presence: { key: profile.id }, private: true } });
     channel.on('presence', { event: 'sync' }, () => {
@@ -141,10 +240,10 @@ export function MasterChat() {
       setOnlineIds([]);
       setLive(false);
     };
-  }, [session, profile]);
+  }, [session, profile, pinUnlocked]);
 
   useEffect(() => {
-    if (!supabaseClient || !session || !profile || !activePerson) {
+    if (!pinUnlocked || !supabaseClient || !session || !profile || !activePerson) {
       setMessages([]);
       return;
     }
@@ -176,12 +275,21 @@ export function MasterChat() {
           return [...current, incoming].sort((a, b) => a.created_at.localeCompare(b.created_at));
         });
         window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'aeroshell_messages' }, payload => {
+        const deleted = payload.old as { id?: string };
+        if (mounted && deleted.id) setMessages(current => current.filter(message => message.id !== deleted.id));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_message_hides', filter: 'user_id=eq.' + profile.id }, payload => {
+        const hidden = payload.new as { message_id?: string };
+        if (!mounted || !hidden.message_id) return;
+        setMessages(current => current.filter(message => message.id !== hidden.message_id));
       }).subscribe();
     return () => {
       mounted = false;
       void supabaseClient?.removeChannel(channel);
     };
-  }, [session, profile, activePerson]);
+  }, [session, profile, activePerson, pinUnlocked]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -272,6 +380,191 @@ export function MasterChat() {
     }
   };
 
+  const hideMessage = async (message: ChatMessage) => {
+    if (!supabaseClient || !profile || messageActionId) return;
+    setMessageActionId(message.id);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_message_hides')
+        .insert({ message_id: message.id, user_id: profile.id });
+      if (error) {
+        if (error.code === '23505') {
+          setMessages(current => current.filter(item => item.id !== message.id));
+          tell('This message is already hidden on this account.', 'info');
+        } else {
+          tell('Could not hide this message. The database denied the change or the connection failed.', 'error');
+        }
+      } else {
+        setMessages(current => current.filter(item => item.id !== message.id));
+        tell('Message hidden for this account only. The other participant still has their copy.', 'success');
+      }
+    } catch {
+      tell('Could not hide this message because the connection failed.', 'error');
+    } finally {
+      setMessageActionId('');
+    }
+  };
+
+  const deleteMessageForEveryone = async (message: ChatMessage) => {
+    if (!supabaseClient || !profile || message.sender_id !== profile.id || messageActionId) return;
+    if (!window.confirm('Delete this message for everyone in this conversation? This cannot be undone.')) return;
+    setMessageActionId(message.id);
+    try {
+      const { data, error } = await supabaseClient.from('aeroshell_messages')
+        .delete().eq('id', message.id).select('id').maybeSingle();
+      if (error || !data) {
+        tell('Message was not deleted. Only the original sender can delete their message for everyone.', 'error');
+      } else {
+        setMessages(current => current.filter(item => item.id !== message.id));
+        tell('Message deleted for everyone.', 'success');
+      }
+    } catch {
+      tell('Could not delete this message because the connection failed.', 'error');
+    } finally {
+      setMessageActionId('');
+    }
+  };
+
+  const submitPin = async (event: FormEvent) => {
+    event.preventDefault();
+    if (pinBusy) return;
+    setPinError('');
+    if (!/^\\d{4}$/.test(pinInput)) {
+      setPinError('Enter exactly four digits.');
+      return;
+    }
+    setPinBusy(true);
+    try {
+      if (pinMode === 'setup') {
+        if (pinInput !== pinConfirm) {
+          setPinError('The PINs do not match.');
+          return;
+        }
+        const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+        const verifier = await derivePinVerifier(pinInput, salt);
+        const record: PinRecord = { version: 1, salt, verifier };
+        localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(record));
+        setPinRecord(record);
+        clearPinFailures();
+        setPinInput('');
+        setPinConfirm('');
+        setPinUnlocked(true);
+        setPinMode('unlock');
+      } else if (pinMode === 'unlock' && pinRecord) {
+        const throttle = readPinThrottle();
+        setPinCooldownUntil(throttle.lockedUntil);
+        if (throttle.lockedUntil > Date.now()) {
+          setPinError('Too many attempts. Wait ' + Math.ceil((throttle.lockedUntil - Date.now()) / 1000) + ' seconds and try again.');
+          return;
+        }
+        const candidate = await derivePinVerifier(pinInput, pinRecord.salt);
+        if (!sameHex(candidate, pinRecord.verifier)) {
+          const failure = recordPinFailure();
+          setPinCooldownUntil(failure.lockedUntil);
+          setPinError(failure.lockedUntil > Date.now()
+            ? 'Too many incorrect attempts. Try again in ' + Math.ceil((failure.lockedUntil - Date.now()) / 1000) + ' seconds.'
+            : 'Incorrect PIN. Try again.');
+          setPinInput('');
+          return;
+        }
+        clearPinFailures();
+        setPinCooldownUntil(0);
+        setPinInput('');
+        setPinUnlocked(true);
+      }
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : 'Could not verify or save the local PIN.');
+    } finally {
+      setPinBusy(false);
+    }
+  };
+
+  const resetLocalPin = () => {
+    try {
+      localStorage.removeItem(PIN_STORAGE_KEY);
+      localStorage.removeItem(PIN_THROTTLE_KEY);
+      setPinRecord(null);
+      setPinMode('setup');
+      setPinInput('');
+      setPinConfirm('');
+      setPinError('Create a new local PIN. This does not recover, change or delete your chat account.');
+    } catch {
+      setPinError('The browser blocked storage changes, so the local PIN cannot be reset here.');
+    }
+  };
+
+  const changeLocalPin = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!pinRecord || pinChangeBusy) return;
+    setPinChangeBusy(true);
+    setPinChangeError('');
+    try {
+      if (!/^\\d{4}$/.test(pinCurrentValue) || !/^\\d{4}$/.test(pinNewValue)) {
+        setPinChangeError('Enter four digits for both the current and new PIN.');
+        return;
+      }
+      if (pinNewValue !== pinNewConfirmValue) {
+        setPinChangeError('The new PINs do not match.');
+        return;
+      }
+      const candidate = await derivePinVerifier(pinCurrentValue, pinRecord.salt);
+      if (!sameHex(candidate, pinRecord.verifier)) {
+        setPinChangeError('The current PIN is incorrect.');
+        return;
+      }
+      const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+      const verifier = await derivePinVerifier(pinNewValue, salt);
+      const next: PinRecord = { version: 1, salt, verifier };
+      localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(next));
+      setPinRecord(next);
+      clearPinFailures();
+      setPinCurrentValue('');
+      setPinNewValue('');
+      setPinNewConfirmValue('');
+      setPinChangeOpen(false);
+      tell('This browser’s app PIN has been changed.', 'success');
+    } catch (error) {
+      setPinChangeError(error instanceof Error ? error.message : 'Could not change the local PIN.');
+    } finally {
+      setPinChangeBusy(false);
+    }
+  };
+
+  const lockApp = () => {
+    setPinUnlocked(false);
+    setPinMode('unlock');
+    setPinInput('');
+    setPinConfirm('');
+    setActivePerson(null);
+    setMessages([]);
+    setDraft('');
+    setPinChangeOpen(false);
+  };
+  lockAppRef.current = lockApp;
+
+  useEffect(() => {
+    if (!pinUnlocked) return;
+    let timer = window.setTimeout(() => lockAppRef.current(), 5 * 60 * 1000);
+    const resetTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => lockAppRef.current(), 5 * 60 * 1000);
+    };
+    document.addEventListener('pointerdown', resetTimer, true);
+    document.addEventListener('keydown', resetTimer, true);
+    document.addEventListener('touchstart', resetTimer, { capture: true, passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('pointerdown', resetTimer, true);
+      document.removeEventListener('keydown', resetTimer, true);
+      document.removeEventListener('touchstart', resetTimer, true);
+    };
+  }, [pinUnlocked]);
+
+  useEffect(() => {
+    if (!pinCooldownUntil || pinCooldownUntil <= Date.now()) return;
+    const timer = window.setInterval(() => setPinNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [pinCooldownUntil]);
+
   const signOut = async () => {
     if (!supabaseClient) return;
     const { error } = await supabaseClient.auth.signOut();
@@ -283,6 +576,41 @@ export function MasterChat() {
       tell('You have signed out.', 'success');
     }
   };
+
+  if (pinMode === 'loading') {
+    return <section className="master-chat-pin-screen" aria-live="polite">
+      <div className="master-chat-pin-card"><span className="master-chat-pin-icon"><LockKeyhole size={25}/></span><h2>Master Chat is locked</h2><p>Preparing your local app lock…</p></div>
+    </section>;
+  }
+
+  if (!pinUnlocked) {
+    const isSetup = pinMode === 'setup';
+    const isRepair = pinMode === 'repair';
+    const cooldownSeconds = Math.max(0, Math.ceil((pinCooldownUntil - pinNow) / 1000));
+    return <section className="master-chat-pin-screen">
+      <form className="master-chat-pin-card" onSubmit={submitPin}>
+        <span className="master-chat-pin-icon"><LockKeyhole size={25}/></span>
+        <p className="eyebrow">AEROSHELL · LOCAL APP LOCK</p>
+        <h2>{isSetup ? 'Create your 4-digit PIN' : isRepair ? 'Local PIN needs repair' : 'Unlock Master Chat'}</h2>
+        <p>{isSetup ? 'This PIN is separate from your Master Chat account password and is stored only in this browser.' : isRepair ? 'The local PIN could not be read. Repairing it only resets this browser lock, not your online account.' : 'Enter the four digits to open the messaging app.'}</p>
+        {!isRepair && <>
+          <label className="master-chat-pin-label">{isSetup ? 'New PIN' : 'Four-digit PIN'}
+            <input autoFocus inputMode="numeric" pattern="[0-9]{4}" type="password" autoComplete="off" maxLength={4} value={pinInput}
+              onChange={event => setPinInput(event.target.value.replace(/\\D/g, '').slice(0, 4))} aria-label="Four-digit app PIN" required/>
+          </label>
+          {isSetup && <label className="master-chat-pin-label">Confirm PIN
+            <input inputMode="numeric" pattern="[0-9]{4}" type="password" autoComplete="off" maxLength={4} value={pinConfirm}
+              onChange={event => setPinConfirm(event.target.value.replace(/\\D/g, '').slice(0, 4))} aria-label="Confirm four-digit app PIN" required/>
+          </label>}
+          {cooldownSeconds > 0 && !isSetup && <p className="master-chat-pin-warning"><AlertTriangle size={15}/> Too many attempts. Try again in {cooldownSeconds}s.</p>}
+        </>}
+        {pinError && <p className="master-chat-notice error" role="alert">{pinError}</p>}
+        {!isRepair && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages'}</button>}
+        {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
+        <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
+      </form>
+    </section>;
+  }
 
   if (!supabaseClient) {
     return <section className="master-chat-setup">
@@ -340,7 +668,7 @@ export function MasterChat() {
         </button>)}
         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
       </div>
-      <div className="master-chat-account"><span className="master-chat-avatar own">{profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span><span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span><button className="master-chat-signout" title="Sign out" onClick={() => void signOut()}><LockKeyhole size={15}/></button></div>
+      <div className="master-chat-account"><span className="master-chat-avatar own">{profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span><span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span><div className="master-chat-account-actions"><button className="master-chat-signout" title="Lock Master Chat" onClick={lockApp}><LockKeyhole size={15}/></button><button className="master-chat-signout" title="Change app PIN" onClick={() => {setPinChangeOpen(true);setPinChangeError('');}}><ShieldCheck size={15}/></button><button className="master-chat-signout" title="Sign out" onClick={() => void signOut()}><LogIn size={15}/></button></div></div>
     </aside>
     <div className="master-chat-main">
       {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
@@ -354,7 +682,7 @@ export function MasterChat() {
             const grouped = previous?.sender_id === message.sender_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
             return <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')} key={message.id}>
               {!mine && !grouped && <span className="master-chat-tiny-avatar">{activePerson.username.slice(0, 1).toUpperCase()}</span>}
-              <div className="master-chat-message-wrap"><div className="master-chat-bubble">{message.body}</div><small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small></div>
+              <div className="master-chat-message-wrap"><div className="master-chat-message-content"><div className="master-chat-bubble">{message.body}</div><div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div></div><small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small></div>
             </div>;
           })}
           <div ref={endRef}/>
@@ -364,5 +692,17 @@ export function MasterChat() {
         </form>
       </>}
     </div>
+    {pinChangeOpen && <div className="master-chat-pin-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget)setPinChangeOpen(false);}}>
+      <form className="master-chat-pin-modal" onSubmit={changeLocalPin} aria-label="Change local app PIN">
+        <button type="button" className="master-chat-pin-close" title="Close PIN settings" onClick={() => setPinChangeOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><ShieldCheck size={23}/></span><h3>Privacy &amp; app PIN</h3>
+        <p>The PIN locks this browser’s Master Chat interface only. It does not encrypt online message content.</p>
+        <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
+        <label>New four-digit PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
+        <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
+        {pinChangeError && <p className="master-chat-notice error" role="alert">{pinChangeError}</p>}
+        <button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':'Change PIN'}</button>
+      </form>
+    </div>}
   </section>;
 }
