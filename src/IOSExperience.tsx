@@ -109,7 +109,7 @@ export function IOSExperience({
   const safeHiddenApps = Array.isArray(hiddenHomeApps) ? hiddenHomeApps : [];
   const safeHomePages = homeAppPages && typeof homeAppPages === 'object' && !Array.isArray(homeAppPages) ? homeAppPages : {};
   const safeDockIds = Array.isArray(savedDockIds) ? savedDockIds : ['store', 'explorer', 'settings', 'notes'];
-  const safeWidgetIds = Array.isArray(widgetIds) ? widgetIds.filter(id => ['clock', 'calendar', 'reminders', 'music', 'quick'].includes(id)) : ['clock', 'calendar', 'reminders', 'music'];
+  const safeWidgetIds = Array.isArray(widgetIds) ? widgetIds.filter(id => ['clock', 'calendar', 'reminders', 'music', 'quick', 'focus', 'storage'].includes(id)) : ['clock', 'calendar', 'reminders', 'music'];
   const installedApps = useMemo(
     () => apps.filter(app => installed.includes(app.id)),
     [apps, installed],
@@ -120,6 +120,7 @@ export function IOSExperience({
   const visibleHomeApps = homePages.filter(item => item.page === page).map(item => item.app);
   const dockIds = useMemo(() => safeDockIds.filter(id => installed.includes(id)).slice(-4), [safeDockIds, installed]);
   const openTaskCount = (() => { try { const value = JSON.parse(localStorage.getItem('aeroshell.tasks.v1') ?? '[]'); return Array.isArray(value) ? value.filter((task: { done?: boolean }) => !task.done).length : 0; } catch { return 0; } })();
+  const localStorageEstimate = (() => { try { let bytes=0; for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i)??'';bytes+=(key.length+(localStorage.getItem(key)??'').length)*2;} return bytes<1024*1024?Math.max(1,Math.round(bytes/1024))+' KB':(bytes/1024/1024).toFixed(1)+' MB'; } catch { return 'Unavailable'; } })();
   const categories = useMemo(() => ['All', ...getAppCategories(apps)], [apps]);
   const filteredApps = useMemo(() => apps.filter(app => {
     if (installedOnly && !installed.includes(app.id)) return false;
@@ -306,13 +307,15 @@ export function IOSExperience({
           : id === 'calendar' ? <button key={id} className="ios-widget ios-widget-calendar" onClick={() => launch('calendar')}><span className="ios-widget-label"><CalendarDays size={14}/> Calendar</span><strong>{clock.toLocaleDateString([], { day: '2-digit' })}</strong><small>{clock.toLocaleDateString([], { weekday: 'long', month: 'long' })}</small></button>
           : id === 'reminders' ? <button key={id} className="ios-widget ios-widget-reminders" onClick={() => launch('tasks')}><span className="ios-widget-label"><ListTodo size={14}/> Reminders</span><strong>{openTaskCount}</strong><small>{openTaskCount === 1 ? 'task to complete' : 'tasks to complete'}</small></button>
           : id === 'music' ? <button key={id} className="ios-widget ios-widget-music" onClick={() => launch('music')}><span className="ios-widget-label"><Music size={14}/> Now Playing</span><strong>Media Player</strong><small>Tap to open your audio library</small></button>
+          : id === 'focus' ? <button key={id} className="ios-widget ios-widget-focus" onClick={() => onUpdateIOSPrefs({doNotDisturb:!iosPrefs.doNotDisturb})}><span className="ios-widget-label"><Moon size={14}/> Focus</span><strong>{iosPrefs.doNotDisturb?'Do Not Disturb On':'Focus Off'}</strong><small>Tap to {iosPrefs.doNotDisturb?'allow':'quiet'} simulated notifications</small></button>
+          : id === 'storage' ? <button key={id} className="ios-widget ios-widget-storage" onClick={() => launch('settings')}><span className="ios-widget-label"><ShieldCheck size={14}/> Browser storage</span><strong>{localStorageEstimate}</strong><small>Approximate AeroShell settings and text data</small></button>
           : <button key={id} className="ios-widget ios-widget-quick" onClick={() => showPanel('control')}><span className="ios-widget-label"><Sun size={14}/> Quick controls</span><strong>Control Center</strong><small>Brightness, volume and appearance</small></button>)}
       </div>
       <div className="ios-icon-grid" aria-label="Installed applications">
         {visibleHomeApps.map(app => {
           const Icon = app.Icon;
           return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current || editingHomeScreen || suppressClick.current) { longPressedRef.current = false; return; } launch(app.id); }}
-            onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel('icon-menu'); }}
+            onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel(null); setEditingHomeScreen(true); }}
             onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd}
             aria-label={'Open '+app.title} title={app.title}>
             <span className="ios-icon-art" style={{ '--app-color': app.color } as CSSProperties}><Icon size={24} strokeWidth={1.8}/></span><span className="ios-app-name">{app.title}</span>
@@ -381,6 +384,8 @@ export function IOSExperience({
             {id:'reminders',title:'Reminders',description:'Open tasks from your local list',Icon:ListTodo},
             {id:'music',title:'Now Playing',description:'Shortcut to Media Player',Icon:Music},
             {id:'quick',title:'Quick Controls',description:'Open simulated Control Center',Icon:Sun},
+            {id:'focus',title:'Focus',description:'Toggle simulated Do Not Disturb',Icon:Moon},
+            {id:'storage',title:'Browser Storage',description:'Approximate local AeroShell data usage',Icon:ShieldCheck},
           ].map(widget=>{const Icon=widget.Icon;const enabled=safeWidgetIds.includes(widget.id);return <button key={widget.id} className={'ios-widget-option '+(enabled?'selected':'')} onClick={()=>setWidgetIds(current=>{const list=Array.isArray(current)?current:[];return list.includes(widget.id)?list.filter(id=>id!==widget.id):[...list,widget.id];})}><span className="ios-widget-option-icon"><Icon size={18}/></span><span><b>{widget.title}</b><small>{widget.description}</small></span>{enabled?<Check size={17}/>:<Plus size={17}/>}</button>;})}
           <p className="ios-hint">Widgets run locally and use your saved AeroShell data. Weather, device battery health and system sensors are not read from your actual device.</p>
         </div>}
