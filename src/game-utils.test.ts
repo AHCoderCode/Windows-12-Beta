@@ -42,12 +42,17 @@ describe('Snake and Minesweeper board generation', () => {
 
 describe('Paint brush configuration', () => {
   it('uses the current selected color for the next stroke without changing brush size', () => {
-    expect(paintStrokeStyle('#ff0000', 7, 1.5, false)).toMatchObject({
+    const firstStroke = paintStrokeStyle('#ff0000', 7, 1.5, false);
+    const secondStroke = paintStrokeStyle('#0000ff', 7, 1.5, false);
+    expect(firstStroke).toMatchObject({
       strokeStyle: '#ff0000', lineWidth: 10.5, globalCompositeOperation: 'source-over',
     });
-    expect(paintStrokeStyle('#0000ff', 7, 1.5, false)).toMatchObject({
+    expect(secondStroke).toMatchObject({
       strokeStyle: '#0000ff', lineWidth: 10.5, globalCompositeOperation: 'source-over',
     });
+    // Selecting a new color creates a new stroke configuration; it never mutates the previous stroke.
+    expect(firstStroke.strokeStyle).toBe('#ff0000');
+    expect(firstStroke.lineWidth).toBe(secondStroke.lineWidth);
     expect(paintStrokeStyle('#0000ff', 7, 1.5, true)).toMatchObject({
       strokeStyle: '#0000ff', lineWidth: 10.5, globalCompositeOperation: 'destination-out',
     });
