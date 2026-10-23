@@ -167,7 +167,7 @@ Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. 
 
 1. Create a Supabase project at https://supabase.com/dashboard.
 2. Open SQL Editor and run the full file supabase/master-chat.sql.
-3. In Supabase Realtime settings, turn off **Allow public access** so the app's private-channel authorization is enforced.
+3. In Supabase Realtime settings, turn off **Allow public access** so the app's private presence and conversation channels are enforced. The schema contains policies for the Master Chat topics.
 4. Under Authentication → Sign In / Providers → Email, disable email confirmation for this username-only beta. The login flow maps each username to a non-deliverable app identity at the reserved .invalid domain; users cannot receive password-reset emails.
 5. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel Project Settings → Environment Variables for Preview and Production, then redeploy. For local development, copy .env.example to .env.local with the same values.
 6. Share the deployed site with a trusted tester. People create separate usernames/passwords, appear in the member list, and can send private real-time messages.
