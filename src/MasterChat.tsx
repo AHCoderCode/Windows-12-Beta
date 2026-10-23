@@ -167,7 +167,7 @@ export function MasterChat() {
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
-    const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-' + activePerson.id)
+    const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-' + activePerson.id, { config: { private: true } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const incoming = payload.new as ChatMessage;
         if (!mounted || !sameConversation(incoming, profile.id, activePerson.id)) return;
