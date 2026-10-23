@@ -95,6 +95,11 @@ export function IOSExperience({
 
   const [locked, setLocked] = useState(false);
   const [contextApp, setContextApp] = useState<string | null>(null);
+  const [editingHomeScreen, setEditingHomeScreen] = useState(false);
+  const [draggingToDock, setDraggingToDock] = useState(false);
+  const appDrag = useRef<{ id: string; startX: number; startY: number; startPage: number; pointerId: number; active: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const suppressClickTimer = useRef<number | null>(null);
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const longPressedRef = useRef(false);
@@ -127,58 +132,112 @@ export function IOSExperience({
     const running = useMemo(() => [...runningApps].reverse(), [runningApps]);
 
   const showPanel = (next: typeof panel) => {
+    setEditingHomeScreen(false);
     setContextApp(null);
     setPanel(current => current === next ? null : next);
   };
   const launch = (appId: string) => {
     setPanel(null);
+    setEditingHomeScreen(false);
     setContextApp(null);
     setLibraryQuery('');
     onLaunchApp(appId);
   };
   const holdStart = (event: ReactPointerEvent<HTMLButtonElement>, appId: string) => {
-    if (event.pointerType === 'mouse') return;
     longPressedRef.current = false;
+    appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, pointerId: event.pointerId, active: false };
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
       setContextApp(appId);
-      setPanel('icon-menu');
-    }, 520);
+      setPanel(null);
+      setEditingHomeScreen(true);
+    }, 480);
   };
   const holdEnd = () => {
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = null;
   };
-  useEffect(() => () => {
-    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
-  }, []);
-  useEffect(() => {
-    setHiddenHomeApps(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : []);
-    setSavedDockIds(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : ['store', 'explorer', 'settings', 'notes']);
-  }, [installed, setHiddenHomeApps, setSavedDockIds]);
-
-  const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!iosPrefs.gestures) return;
-    const target = event.target as HTMLElement;
-    const onGrid = Boolean(target.closest('.ios-icon-grid'));
-    if (target.closest('input,textarea,select,a,.ios-home-indicator,.ios-panel-overlay,.ios-home-scroll') || (target.closest('button') && !onGrid)) return;
-    gesture.current = { x: event.clientX, y: event.clientY, target: onGrid ? 'grid' : 'background' };
+  const homeGestureMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = appDrag.current;
+    if (drag && drag.pointerId === event.pointerId && editingHomeScreen) {
+      if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 9) drag.active = true;
+      if (drag.active) {
+        const nearLeft = event.clientX < 28;
+        const nearRight = event.clientX > window.innerWidth - 28;
+        if (nearLeft && page > 0) {
+          const nextPage = page - 1;
+          setPage(nextPage);
+          drag.startPage = nextPage;
+        } else if (nearRight && page < homePageCount) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          drag.startPage = nextPage;
+        }
+        setDraggingToDock(event.clientY > window.innerHeight - 118);
+        event.preventDefault();
+        return;
+      }
+    }
   };
-  const homeGestureEnd = (event: ReactPointerEvent<HTMLElement>) => {
+  const finishHomeGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = appDrag.current;
+    if (drag) {
+      holdEnd();
+      if (drag.active) {
+        const id = drag.id;
+        if (event.clientY > window.innerHeight - 118) {
+          setSavedDockIds(current => [...(Array.isArray(current) ? current.filter(item => item !== id) : []), id].slice(-4));
+          setHiddenHomeApps(current => Array.from(new Set([...(Array.isArray(current) ? current : []), id])));
+          setPage(drag.startPage);
+        } else {
+          const dx = event.clientX - drag.startX;
+          const targetPage = Math.max(0, Math.min(homePageCount - 1, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
+          setHomeAppPage(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: targetPage }));
+          setPage(targetPage);
+        }
+        setDraggingToDock(false);
+        appDrag.current = null;
+        suppressClick.current = true;
+        if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current);
+        suppressClickTimer.current = window.setTimeout(() => { suppressClick.current = false; }, 180);
+        return;
+      }
+      appDrag.current = null;
+    }
     if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current;
     gesture.current = null;
-    if (!start || start.target === 'status' || panel || locked) return;
+    if (!start || panel || locked) return;
     const dx = event.clientX - start.x;
     const dy = event.clientY - start.y;
-    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.2 && start.target === 'grid') {
-      const pages = homePageCount;
-      setPage(current => Math.max(0, Math.min(pages - 1, current + (dx < 0 ? 1 : -1))));
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+      setPage(current => Math.max(0, Math.min(homePageCount - 1, current + (dx < 0 ? 1 : -1))));
+      suppressClick.current = true;
+      if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current);
+      suppressClickTimer.current = window.setTimeout(() => { suppressClick.current = false; }, 180);
       return;
     }
     if (dy > 75 && start.y < 70) showPanel(start.x < window.innerWidth / 2 ? 'notifications' : 'control');
   };
+  useEffect(() => () => {
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+    if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current);
+  }, []);
+  useEffect(() => {
+    setHiddenHomeApps(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : []);
+    setSavedDockIds(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : ['store', 'explorer', 'settings', 'notes']);
+    if (contextApp && !installed.includes(contextApp)) { setContextApp(null); setEditingHomeScreen(false); }
+  }, [installed, setHiddenHomeApps, setSavedDockIds, contextApp]);
+
+  const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!iosPrefs.gestures || editingHomeScreen) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input,textarea,select,a,.ios-panel-overlay,.ios-home-indicator,[contenteditable="true"]')) return;
+    if (target.closest('button') && !target.closest('.ios-app-icon') && !target.closest('.ios-widget')) return;
+    gesture.current = { x: event.clientX, y: event.clientY, target: target.closest('.ios-icon-grid') ? 'grid' : 'home' };
+  };
+
   const statusGestureStart = (event: ReactPointerEvent<HTMLDivElement>) => { if (!iosPrefs.gestures) return; gesture.current = { x: event.clientX, y: event.clientY, target: 'status' }; };
   const statusGestureEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!iosPrefs.gestures) { gesture.current = null; return; }
@@ -205,7 +264,8 @@ export function IOSExperience({
   } as CSSProperties;
 
   return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+(panel==='icon-menu'?'is-editing ':'')+wallpaperClass} style={shellStyle} data-ios-shell="true"
-    onPointerDown={homeGestureStart} onPointerUp={homeGestureEnd} onPointerCancel={() => { gesture.current = null; }}>
+    onPointerDown={homeGestureStart} onPointerMove={homeGestureMove} onPointerUp={finishHomeGesture} onPointerCancel={() => { gesture.current = null; appDrag.current = null; setDraggingToDock(false); }}
+    onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current); suppressClickTimer.current = null; } }}>
     <div className="ios-wallpaper-glow" aria-hidden="true"/>
     {(!activeApp || panel==='switcher') && !locked && <div className="ios-status-bar" onPointerDown={statusGestureStart} onPointerUp={statusGestureEnd}>
       <button className="ios-status-clock" title="Open lock screen" onClick={() => { setLocked(true); setPanel(null); }}>{formatClock(clock, false)}</button>
@@ -235,7 +295,7 @@ export function IOSExperience({
       <div className="ios-icon-grid" aria-label="Installed applications">
         {visibleHomeApps.map(app => {
           const Icon = app.Icon;
-          return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current) { longPressedRef.current = false; return; } launch(app.id); }}
+          return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current || editingHomeScreen || suppressClick.current) { longPressedRef.current = false; return; } launch(app.id); }}
             onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel('icon-menu'); }}
             onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd} onPointerLeave={holdEnd}
             aria-label={'Open '+app.title} title={app.title}>
