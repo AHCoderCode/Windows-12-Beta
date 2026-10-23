@@ -1105,3 +1105,130 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .settings-content .setting-card .setup-field{display:flex;flex-direction:column;gap:7px;margin:12px 0;font-size:13px;font-weight:600}
 .settings-content .setting-card .setup-field input{min-width:0;width:100%;max-width:440px;padding:10px 11px;border:1px solid var(--line,#777);border-radius:6px;background:var(--surface,#fff);color:inherit;font:inherit;font-weight:400}
 @media(max-width:520px){.classic-login-panel{padding:24px 20px}.classic-login-screen{padding:16px}.setup-account-password{padding:12px}}
+
+
+/* Windows 7-inspired Aero Glass mode: a separate classic desktop presentation. */
+.windows7-mode-shell{
+ --text:#172b3e;--muted:#5b7287;--surface:rgba(242,249,253,.97);--solid:#edf5fa;--raised:#dceaf3;
+ --soft:rgba(35,78,111,.08);--border:rgba(48,91,122,.22);--shadow:0 18px 55px rgba(9,30,55,.34);
+ --accent:#2676b5;color:#eff8ff;
+ background-color:#65a7d4;
+ background-image:
+  radial-gradient(ellipse 70% 32% at 17% 96%,#328138 0 48%,transparent 51%),
+  radial-gradient(ellipse 80% 42% at 78% 104%,#6baa42 0 50%,transparent 53%),
+  radial-gradient(ellipse 66% 35% at 53% 104%,#418d35 0 52%,transparent 55%),
+  linear-gradient(180deg,#0757a2 0%,#3596d0 25%,#96d1ed 51%,#d7eef2 60%,#4c9637 61%,#174c26 100%);
+}
+.windows7-mode-shell .desktop-glow{background:linear-gradient(120deg,#ffffff15,transparent 35%,#e7f9ff12);opacity:.8}
+.windows7-mode-shell .desktop-shortcuts{top:12px;left:10px;grid-template-columns:82px;gap:2px}
+.windows7-mode-shell .desktop-shortcut{width:78px;height:82px;gap:5px;border-radius:3px;color:#fff;font-family:"Segoe UI",Tahoma,sans-serif;font-size:11px;text-shadow:0 1px 3px #132d26,0 0 5px #132d26;padding:5px 2px}
+.windows7-mode-shell .desktop-shortcut:hover,.windows7-mode-shell .desktop-shortcut:focus-visible{background:#96d9ff34;border:1px solid #d2efff7a;box-shadow:inset 0 0 0 1px #ffffff2a}
+.windows7-mode-shell .desktop-shortcut .app-icon{width:38px;height:38px;border-radius:4px;box-shadow:0 2px 7px #102b3a66,inset 0 1px #ffffffa0;border:1px solid #ffffff64}
+.windows7-mode-shell .taskbar{
+ left:0;right:0;bottom:0;transform:none;width:100%;max-width:none;height:48px;
+ padding:2px 6px;border:0;border-top:1px solid #d5f0ff96;border-radius:0;gap:0;
+ background:linear-gradient(180deg,#b9e6f3bd 0%,#7bb6d8c9 18%,#2d638bc9 52%,#153956e8 100%);
+ box-shadow:0 -2px 20px #102d4d55,inset 0 1px #ffffffc2,inset 0 -1px #0c2e4cbd;
+ backdrop-filter:blur(17px) saturate(145%);-webkit-backdrop-filter:blur(17px) saturate(145%);
+}
+.windows7-mode-shell .taskbar:before{content:"";position:absolute;inset:0 0 auto;height:1px;background:#effbffdb;pointer-events:none}
+.windows7-mode-shell .task-left{display:none}
+.windows7-mode-shell .task-center{position:absolute;left:0;right:176px;top:0;bottom:0;height:48px;justify-content:flex-start;gap:3px;padding:0 5px 0 52px;overflow:visible}
+.windows7-mode-shell .task-center>.task-app{width:47px;height:42px;border-radius:3px;border:1px solid transparent;background:linear-gradient(180deg,#ffffff08,#06284508);box-shadow:none}
+.windows7-mode-shell .task-center>.task-app:hover,.windows7-mode-shell .task-center>.task-app.selected{border-color:#d9f2ffb5;background:linear-gradient(180deg,#e6f8ff60,#8fcaf14a);box-shadow:inset 0 1px #ffffffba,0 0 6px #b9e8ff57}
+.windows7-mode-shell .task-center>.task-app.current{background:linear-gradient(180deg,#b4e6ff7a,#2877ad78);border-color:#d3f1ffdb}
+.windows7-mode-shell .task-center>.task-app:after{bottom:0;width:23px;height:3px;background:#9edfff;border-radius:3px 3px 0 0}
+.windows7-mode-shell .task-center>.start-button{
+ position:absolute;left:2px;top:1px;width:44px;height:44px;border-radius:50%;
+ border:1px solid #8ed4f6;background:radial-gradient(ellipse at 30% 22%,#ffffff 0,#9fe5ff 19%,#1681c5 44%,#063d84 74%,#0b285f 100%);
+ box-shadow:0 0 0 2px #174c76,0 1px 8px #071e46a8,inset 0 1px 2px #ffffffdb,inset 0 -3px 6px #031d4d99;overflow:hidden
+}
+.windows7-mode-shell .task-center>.start-button svg{width:24px;height:24px;filter:drop-shadow(0 1px 1px #133b55)}
+.windows7-mode-shell .task-center>.task-app:nth-child(2),.windows7-mode-shell .task-center>.task-app:nth-child(3){display:none}
+.windows7-mode-shell .task-right{height:44px;margin-left:auto;gap:2px;padding:0 5px;border-left:1px solid #d0edff35;background:#183c5a30}
+.windows7-mode-shell .task-mini,.windows7-mode-shell .tray-button,.windows7-mode-shell .clock-button{border-radius:3px;color:#f0f8ff;text-shadow:0 1px 2px #173e61}
+.windows7-mode-shell .task-mini:hover,.windows7-mode-shell .tray-button:hover,.windows7-mode-shell .clock-button:hover{background:#c5ebff30;box-shadow:inset 0 1px #ffffff5e}
+.windows7-mode-shell .clock-button{height:40px;min-width:67px;font-size:11px}
+.windows7-mode-shell .clock-button small{font-size:10px}
+.windows7-mode-shell .desktop-bottom-actions{right:14px;bottom:58px;gap:7px;color:#ffffffd9;text-shadow:0 1px 4px #17432e}
+.windows7-mode-shell .desktop-bottom-actions button{border:1px solid #d2edff68;border-radius:3px;background:linear-gradient(#9dd4ecaa,#1b598a9c);box-shadow:inset 0 1px #ffffff72;padding:6px 9px}
+.windows7-mode-shell .welcome-chip{bottom:57px;background:#1539577a;border-color:#d5efff65;color:white;border-radius:4px}
+.windows7-mode-shell .window{
+ min-width:285px;min-height:220px;border:1px solid #9bb9c9;border-radius:7px;
+ background:rgba(238,247,252,.96);backdrop-filter:blur(20px) saturate(135%);
+ box-shadow:0 14px 43px #08254170,inset 0 0 0 1px #ffffffa8;overflow:hidden
+}
+.windows7-mode-shell .window.active{border-color:#83b7d5;box-shadow:0 16px 50px #08254170,inset 0 0 0 1px #ffffffc7}
+.windows7-mode-shell .window-title{
+ height:39px;padding-left:9px;border-bottom:1px solid #b6cfdf;color:#19354c;
+ background:linear-gradient(180deg,#f8fcffed 0%,#deeff9e8 40%,#c4deeedf 100%);
+ box-shadow:inset 0 1px #ffffffd9;font-family:"Segoe UI",Tahoma,sans-serif
+}
+.windows7-mode-shell .window-app-title{font-weight:600;font-size:12px;text-shadow:0 1px #ffffffa8}
+.windows7-mode-shell .window-app-title .app-icon{border-radius:4px}
+.windows7-mode-shell .window-controls{gap:1px;padding:3px 4px}
+.windows7-mode-shell .window-controls button{
+ width:32px;margin:0 1px;border:1px solid #8faebe;border-radius:3px;color:#16364d;
+ background:linear-gradient(#ffffffb8,#cce3f1c9);box-shadow:inset 0 1px #ffffffd9
+}
+.windows7-mode-shell .window-controls button:hover{background:linear-gradient(#ffffff,#90cbea);border-color:#4d92b9}
+.windows7-mode-shell .window-controls .close-control{width:48px;color:#fff;border-color:#8e3030;background:linear-gradient(#f8a29b,#cb3939 55%,#a91e22);box-shadow:inset 0 1px #ffffff9c}
+.windows7-mode-shell .window-controls .close-control:hover{background:linear-gradient(#ffccc3,#f0554c 55%,#bd2028)}
+.windows7-mode-shell .window-content{background:#f2f7fae8}
+.windows7-mode-shell .app-page,.windows7-mode-shell .settings-content{color:#1c3346}
+.windows7-mode-shell .settings-sidebar{background:linear-gradient(#ecf6fb,#daeaf3);border-right-color:#bdcfda}
+.windows7-mode-shell .settings-nav{color:#213c50}
+.windows7-mode-shell .setting-card{background:#fbfdff;border-color:#c1d4df;box-shadow:0 1px 3px #2147640c}
+.windows7-mode-shell .secondary-button{background:linear-gradient(#ffffff,#e2eef5);border-color:#abc4d3;color:#18354b}
+.windows7-mode-shell .secondary-button:hover{background:linear-gradient(#ffffff,#cbe7f7)}
+.windows7-mode-shell .primary-button{background:linear-gradient(#7bbde4,#317eae);color:white;border:1px solid #276d9b;box-shadow:inset 0 1px #ffffff85}
+.windows7-mode-shell .profile-input,.windows7-mode-shell .event-form input,.windows7-mode-shell .app-page input,.windows7-mode-shell .app-page textarea,.windows7-mode-shell .app-page select{background:#fff;color:#18344a;border-color:#adbfcb}
+.windows7-mode-shell .popover{
+ bottom:47px;border:1px solid #a6c5d9;border-radius:7px 7px 0 0;
+ background:linear-gradient(135deg,#e6f4fbf5,#fffffffa 56%,#d4e8f6fa);
+ color:#193247;backdrop-filter:blur(24px) saturate(140%);
+ box-shadow:0 12px 38px #0825416b,inset 0 0 0 1px #ffffffcf
+}
+.windows7-mode-shell .start-popover{left:6px;transform:none;width:min(390px,calc(100% - 12px));padding:12px 12px 0}
+.windows7-mode-shell .popover-head{color:#243d50}
+.windows7-mode-shell .popover .searchbox{background:#fff;border-color:#a9c6d8;color:#53758c}
+.windows7-mode-shell .popover .searchbox input{color:#18354a}
+.windows7-mode-shell .popover .searchbox kbd{color:#587186;border-color:#cadce6}
+.windows7-mode-shell .pinned-grid button,.windows7-mode-shell .search-results>button,.windows7-mode-shell .start-footer button{color:#17344b}
+.windows7-mode-shell .pinned-grid button:hover,.windows7-mode-shell .search-results>button:hover,.windows7-mode-shell .start-footer button:hover{background:#b0dcf58c}
+.windows7-mode-shell .pinned-grid span:last-child{color:#1f3d53}
+.windows7-mode-shell .start-footer{margin:0 -12px;padding:0 12px;border-color:#bdd3e0;background:linear-gradient(#edf7fc,#d5e8f3);color:#17344b}
+.windows7-mode-shell .start-footer button{border:1px solid #a5c4d5;background:linear-gradient(#ffffffaa,#d8eaf4aa)}
+.windows7-mode-shell .start-footer button:hover{background:#ffffff}
+.windows7-mode-shell .profile-dot{border:1px solid #b7d3e4;box-shadow:0 1px 3px #11354c4a}
+.windows7-mode-shell .context-menu{background:linear-gradient(#f8fcfff7,#ddecf5f7);border-color:#adcbdc;border-radius:4px;box-shadow:0 8px 22px #0825415c}
+.windows7-mode-shell .context-menu button{color:#1b3b52}
+.windows7-mode-shell .context-menu button:hover{background:#abd9f177}
+.windows7-mode-shell .context-divider{background:#c0d6e3}
+.windows7-mode-shell .toast{bottom:56px;background:linear-gradient(#eaf7fff5,#c7e2f1f5);color:#17354a;border-color:#accbdc;border-radius:5px;box-shadow:0 7px 26px #08254155}
+.windows7-mode-shell .snap-suggestion{border-color:#9ebcd0;background:linear-gradient(#f9fdfff5,#dfedf6f5);color:#17354a}
+.windows7-mode-shell .snap-suggestion small{color:#60778a}
+.windows7-mode-shell .snap-action{background:linear-gradient(#8fcaec,#287cac);color:#fff;border:1px solid #286f9a}
+.windows7-mode-shell .snap-action.secondary{background:linear-gradient(#fff,#deedf5);color:#29485d;border-color:#abc6d6}
+.windows7-mode-shell .switch-mode-shortcut{border-radius:4px}
+.launch-windows7{background:radial-gradient(ellipse at 50% 70%,#327cb2 0,transparent 45%),linear-gradient(180deg,#062f5f,#3188bf 65%,#193e5f);font-family:"Segoe UI",Tahoma,sans-serif}
+.launch-windows7 .launch-orb{opacity:.3;filter:hue-rotate(35deg)}
+.launch-windows7 .launch-logo,.launch-windows7 .launch-emblem-inner{color:#dff5ff}
+.launch-windows7 .launch-primary{border-radius:3px;background:linear-gradient(#a8d8f2,#2879ad);border:1px solid #bce8ff;box-shadow:inset 0 1px #ffffff8a}
+.launch-windows7 .launch-mode-picker button.selected{border-radius:4px;background:#4e93c34d;border-color:#a3dbf8}
+@media(max-width:620px){
+ .windows7-mode-shell .taskbar{height:48px;padding:2px 3px}
+ .windows7-mode-shell .task-center{right:145px;gap:1px;padding-left:47px}
+ .windows7-mode-shell .task-center>.task-app{width:39px}
+ .windows7-mode-shell .task-center>.start-button{width:40px;height:40px;left:2px;top:3px}
+ .windows7-mode-shell .task-right{padding:0 2px}
+ .windows7-mode-shell .tray-button{padding:0 3px}
+ .windows7-mode-shell .task-mini{width:26px}
+ .windows7-mode-shell .clock-button{min-width:53px;font-size:10px}
+ .windows7-mode-shell .desktop-bottom-actions{right:8px;bottom:54px}
+ .windows7-mode-shell .desktop-bottom-actions span{display:none}
+ .windows7-mode-shell .start-popover{width:min(360px,calc(100% - 10px));left:5px}
+ .windows7-mode-shell .desktop-shortcuts{grid-template-columns:70px}
+ .windows7-mode-shell .desktop-shortcut{width:68px;font-size:10px}
+}
+@media(prefers-reduced-motion:reduce){.windows7-mode-shell .taskbar,.windows7-mode-shell .window{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
