@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
 
@@ -29,6 +30,7 @@ type Props = {
   people: ChatProfile[];
   activePerson: ChatProfile | null;
   enabled: boolean;
+  showCallLauncher?: boolean;
 };
 
 const MAX_CALL_MS = 50 * 60 * 1000;
@@ -39,8 +41,9 @@ function durationLabel(seconds: number) {
   return mm + ':' + ss;
 }
 
-export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled }: Props) {
+export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled, showCallLauncher = true }: Props) {
   const [activeCall, setActiveCall] = useState<CallView | null>(null);
+  const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
   const [callState, setCallState] = useState<CallState>('idle');
   const [notice, setNotice] = useState('');
   const [muted, setMuted] = useState(false);
@@ -106,7 +109,23 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     if (!client) throw new Error('The voice calling backend is unavailable.');
     const { data, error } = await client.functions.invoke('master-chat-turn-credentials', { body: { callId } });
     if (error) {
-      throw new Error('Private voice relay is not configured yet. The call was not connected. The site owner must configure the server-side TURN secrets.');
+      let serviceCode = '';
+      let httpStatus = 0;
+      const context = (error as { context?: unknown }).context;
+      if (context instanceof Response) {
+        httpStatus = context.status;
+        try {
+          const body = await context.clone().json() as { error?: unknown };
+          if (typeof body.error === 'string') serviceCode = body.error;
+        } catch { /* Some gateway errors do not return JSON. */ }
+      }
+      if (serviceCode === 'private_relay_not_configured') {
+        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN in the Supabase Edge Function secrets.');
+      }
+      if (serviceCode === 'private_relay_unavailable' || serviceCode === 'backend_configuration_unavailable' || httpStatus === 503 || httpStatus === 502) {
+        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Cloudflare TURN credentials.');
+      }
+      throw new Error('Could not prepare the secure voice relay. No call was connected. Please try again after the server relay issue is fixed.');
     }
     const servers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
     const turnServers = servers.filter(server => {
@@ -271,8 +290,9 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     }
   }, [applySignal, client, profile]);
 
-  const startCall = useCallback(async () => {
-    if (!enabled || !client || !activePerson || !profile || activeCallRef.current || busy) return;
+  const startCall = useCallback(async (recipient: ChatProfile) => {
+    if (!enabled || !client || !recipient || recipient.id === profile.id || !profile || activeCallRef.current || busy) return;
+    setRecipientPickerOpen(false);
     setNotice('');
     setBusy(true);
     setCallState('preparing');
@@ -287,11 +307,11 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       });
       localStreamRef.current = local;
       const { data, error } = await client.from('aeroshell_calls')
-        .insert({ caller_id: profile.id, callee_id: activePerson.id })
+        .insert({ caller_id: profile.id, callee_id: recipient.id })
         .select('id, caller_id, callee_id, status, created_at, updated_at').single();
       if (error || !data) throw new Error(error?.message ?? 'Could not start the call.');
       createdCallId = data.id;
-      const call: CallView = { ...data as CallRow, direction: 'outgoing', peer: activePerson };
+      const call: CallView = { ...data as CallRow, direction: 'outgoing', peer: recipient };
       setCall(call);
       if (ringTimerRef.current !== null) window.clearTimeout(ringTimerRef.current);
       ringTimerRef.current = window.setTimeout(() => {
@@ -307,7 +327,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       if (!pc.localDescription?.sdp) throw new Error('Could not create the audio offer.');
       await sendSignal(call, 'offer', { type: 'offer', sdp: pc.localDescription.sdp });
       setCallState('outgoing');
-      setNotice('Calling ' + activePerson.username + ' through a private relay. Camera access is never requested.');
+      setNotice('Calling ' + recipient.username + ' through the private relay. Camera access is never requested.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Voice call could not start.';
       if (createdCallId) {
@@ -318,7 +338,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     } finally {
       setBusy(false);
     }
-  }, [activePerson, buildPeerConnection, busy, cleanupLocal, client, enabled, profile, sendSignal, setCall, turnServersForCall]);
+  }, [buildPeerConnection, busy, cleanupLocal, client, enabled, profile, sendSignal, setCall, turnServersForCall]);
 
   const acceptCall = useCallback(async () => {
     const current = activeCallRef.current;
@@ -413,9 +433,6 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       }, 45000);
     };
     const channel = client.channel('aeroshell-master-chat-calls', { config: { private: true } })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_calls' }, payload => {
-        void receiveCall(payload.new as CallRow);
-      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'aeroshell_calls' }, payload => {
         const row = payload.new as CallRow;
         const current = activeCallRef.current;
@@ -428,7 +445,17 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_call_signals', filter: 'to_user_id=eq.' + profile.id }, payload => {
-        queueOrApplySignal(payload.new as CallSignal);
+        const signal = payload.new as CallSignal;
+        queueOrApplySignal(signal);
+        if (signal.kind === 'offer') {
+          void (async () => {
+            const { data, error } = await client.from('aeroshell_calls')
+              .select('id, caller_id, callee_id, status, created_at, updated_at')
+              .eq('id', signal.call_id).eq('callee_id', profile.id).eq('status', 'ringing').maybeSingle();
+            if (!active || error || !data) return;
+            await receiveCall(data as CallRow);
+          })();
+        }
       })
       .subscribe(status => {
         if (status === 'SUBSCRIBED') {
@@ -436,21 +463,34 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
             const { data } = await client.from('aeroshell_calls')
               .select('id, caller_id, callee_id, status, created_at, updated_at')
               .eq('callee_id', profile.id).eq('status', 'ringing')
-              .order('created_at', { ascending: false }).limit(1);
-            if (active && data?.[0]) await receiveCall(data[0] as CallRow);
+              .order('created_at', { ascending: false }).limit(5);
+            if (!active || !data?.length) return;
+            // A ringing DB row is not enough: wait until a real offer exists so relay failures never flash a fake incoming call.
+            for (const row of data as CallRow[]) {
+              if (!active) return;
+              const { data: offers } = await client.from('aeroshell_call_signals')
+                .select('id').eq('call_id', row.id).eq('to_user_id', profile.id).eq('kind', 'offer').limit(1);
+              if (active && offers?.length) await receiveCall(row);
+            }
           })();
         }
       });
     return () => {
       active = false;
       void client.removeChannel(channel);
-      const current = activeCallRef.current;
-      if (current) {
-        void client.from('aeroshell_calls').update({ status: 'ended' }).eq('id', current.id).in('status', ['ringing', 'accepted']);
-        cleanupLocal();
-      }
+      // Do not hang up active calls merely because a Realtime dependency refreshes.
     };
   }, [enabled, client, profile, cleanupLocal, queueOrApplySignal, setCall]);
+
+  useEffect(() => {
+    if (enabled) return;
+    const current = activeCallRef.current;
+    if (current) void finishCall('ended', 'The call ended because Master Chat was locked.');
+  }, [enabled, finishCall]);
+
+  useEffect(() => {
+    if (!showCallLauncher) setRecipientPickerOpen(false);
+  }, [showCallLauncher]);
 
   useEffect(() => {
     if (callState !== 'connected' || connectedAt === null) {
@@ -465,13 +505,34 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
 
   return <>
     <audio ref={remoteAudioRef} autoPlay playsInline aria-label="Remote voice call audio" className="master-chat-remote-audio"/>
-    {activePerson && callState === 'idle' && <button type="button" className="master-chat-voice-call-button"
-      onClick={() => void startCall()} disabled={!enabled || busy || !client || !!activeCall}
-      title="Start an encrypted, relay-only audio call">
-      <PhoneCall size={15}/> <span>Voice call</span>
-    </button>}
-    {notice && <div className="master-chat-voice-notice" role="status"><ShieldCheck size={14}/><span>{notice}</span><button aria-label="Dismiss call notice" title="Dismiss" onClick={() => setNotice('')}>×</button></div>}
-    {activeCall && <div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label="Voice call controls">
+    {showCallLauncher && callState === 'idle' && createPortal(
+      <button type="button" className="master-chat-voice-call-button"
+        onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
+        title="Choose whom to call" aria-label="Choose whom to call">
+        <PhoneCall size={17}/> <span>Call someone</span>
+      </button>, document.body
+    )}
+    {recipientPickerOpen && showCallLauncher && createPortal(
+      <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
+        <section className="master-chat-recipient-picker" role="dialog" aria-modal="true" aria-label="Choose a person to call">
+          <header><span><PhoneCall size={19}/><b>Who would you like to call?</b></span><button type="button" aria-label="Close call picker" onClick={() => setRecipientPickerOpen(false)}><X size={18}/></button></header>
+          <p>Select a Master Chat member. The other person must accept before audio can connect.</p>
+          <div className="master-chat-recipient-picker-list">
+            {people.filter(person => person.id !== profile.id).map(person => <button type="button" key={person.id} disabled={busy || !!activeCall} onClick={() => void startCall(person)}>
+              <span className="master-chat-recipient-avatar">{person.username.slice(0,1).toUpperCase()}</span>
+              <span className="master-chat-recipient-label"><b>{person.username}</b><small>Start an audio call</small></span>
+              <PhoneCall size={17}/>
+            </button>)}
+            {!people.some(person => person.id !== profile.id) && <div className="master-chat-recipient-empty"><b>No one to call yet</b><span>Other Master Chat accounts will appear here.</span></div>}
+          </div>
+          <small className="master-chat-recipient-security"><ShieldCheck size={14}/> Calls require the private TURN relay; there is no direct-IP fallback.</small>
+        </section>
+      </div>, document.body
+    )}
+    {notice && createPortal(
+      <div className="master-chat-voice-notice" role="status"><ShieldCheck size={14}/><span>{notice}</span><button aria-label="Dismiss call notice" title="Dismiss" onClick={() => setNotice('')}>×</button></div>, document.body
+    )}
+    {activeCall && createPortal(<div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label="Voice call controls">
       <section className="master-chat-call-card">
         <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window"
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
@@ -481,13 +542,15 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming audio call' : callState === 'preparing' ? 'Preparing secure audio…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
         <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode: direct connections are disabled to avoid exposing your IP address to the other caller. WebRTC encrypts the audio stream, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; Cloudflare may observe relay IP/session metadata, not the audio content.</span></div>
         {callState === 'incoming' ? <div className="master-chat-call-actions"><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
-          : <div className="master-chat-call-actions">
-            <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute} disabled={callState === 'preparing'}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} {muted ? 'Unmute' : 'Mute'}</button>
+          : callState === 'connected' ? <div className="master-chat-call-actions">
+            <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} {muted ? 'Unmute' : 'Mute'}</button>
             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> End call</button>
+          </div> : <div className="master-chat-call-actions">
+            <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call cancelled.')}><PhoneOff size={17}/> Cancel call</button>
           </div>}
         <small className="master-chat-call-footer"><AlertTriangle size={13}/> Use calls only with people you trust. Incoming voice is never auto-answered.</small>
       </section>
-    </div>}
+    </div>, document.body)}
     {quietIncoming && <span className="master-chat-visually-hidden">Incoming call is muted.</span>}
   </>;
 }
