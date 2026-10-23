@@ -81,7 +81,7 @@ const formatClock = (date: Date, hour12 = false) =>
 
 export function IOSExperience({
   apps, installed, runningApps, activeApp, clock, iosPrefs, sharedPrefs,
-  onUpdateIOSPrefs, onUpdateSharedPrefs, onLaunchApp, onHome, onSwitchApp, onCloseApp, onSwitchMode,
+  onUpdateIOSPrefs, onUpdateSharedPrefs, onLaunchApp, onHome, onSwitchApp, onCloseApp, onUninstallApp, onSwitchMode,
 }: IOSExperienceProps) {
   const [panel, setPanel] = useState<'library' | 'control' | 'notifications' | 'switcher' | 'icon-menu' | 'widgets' | null>(null);
   const [libraryQuery, setLibraryQuery] = useState('');
@@ -188,7 +188,7 @@ export function IOSExperience({
         } else {
           setSavedDockIds(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
           setHiddenHomeApps(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
-          setHomeAppPage(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: drag.targetPage }));
+          setHomeAppPages(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: drag.targetPage }));
           setPage(drag.targetPage);
         }
         gesture.current = null;
@@ -315,9 +315,9 @@ export function IOSExperience({
       return <div className="ios-edit-toolbar" role="toolbar" aria-label={'Edit '+selected.title}>
         <div className="ios-edit-toolbar-title"><span className="ios-icon-art" style={{'--app-color':selected.color} as CSSProperties}><selected.Icon size={18}/></span><span><b>{selected.title}</b><small>Drag to another page or the dock</small></span></div>
         <div className="ios-edit-toolbar-actions">
-          <button onClick={() => { const targetPage=Math.max(0,(safeHomePages[contextApp]??page)-1);setHomeAppPage(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><ChevronRight size={15} className="ios-edit-left"/> Previous page</button>
-          <button onClick={() => { const targetPage=Math.min(homePageCount,Math.max(page,safeHomePages[contextApp]??page)+1);setHomeAppPage(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><MoveRight size={15}/> Next page</button>
-          <button onClick={() => { if(isDocked){setSavedDockIds(current=>(Array.isArray(current)?current:[]).filter(id=>id!==contextApp));setHiddenHomeApps(current=>(Array.isArray(current)?current:[]).filter(id=>id!==contextApp));setHomeAppPage(current=>({...current,[contextApp]:page}));}else{setSavedDockIds(current=>[...(Array.isArray(current)?current:[]).filter(id=>id!==contextApp),contextApp].slice(-4));setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));} closeEdit(); }}><Smartphone size={15}/>{isDocked?'Remove from Dock':'Add to Dock'}</button>
+          <button onClick={() => { const targetPage=Math.max(0,(safeHomePages[contextApp]??page)-1);setHomeAppPages(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><ChevronRight size={15} className="ios-edit-left"/> Previous page</button>
+          <button onClick={() => { const targetPage=Math.min(homePageCount,Math.max(page,safeHomePages[contextApp]??page)+1);setHomeAppPages(current=>({...current,[contextApp]:targetPage}));setPage(targetPage);closeEdit(); }}><MoveRight size={15}/> Next page</button>
+          <button onClick={() => { if(isDocked){setSavedDockIds(current=>(Array.isArray(current)?current:[]).filter(id=>id!==contextApp));setHiddenHomeApps(current=>(Array.isArray(current)?current:[]).filter(id=>id!==contextApp));setHomeAppPages(current=>({...current,[contextApp]:page}));}else{setSavedDockIds(current=>[...(Array.isArray(current)?current:[]).filter(id=>id!==contextApp),contextApp].slice(-4));setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));} closeEdit(); }}><Smartphone size={15}/>{isDocked?'Remove from Dock':'Add to Dock'}</button>
           <button onClick={() => { setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setSavedDockIds(current=>(Array.isArray(current)?current:[]).filter(id=>id!==contextApp));closeEdit(); }}><X size={15}/> Remove App</button>
           <button disabled={isSystem} onClick={() => {const id=contextApp;closeEdit();onUninstallApp(id);}}><Trash2 size={15}/>{isSystem?'System app':'Uninstall'}</button>
         </div>
