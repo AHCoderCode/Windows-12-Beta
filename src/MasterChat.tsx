@@ -9,8 +9,13 @@ type AuthMode = 'signin' | 'signup';
 const supabaseClient = (() => {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
   const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() || import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
-  if (!url || !key || !/^https?:\\/\\/(?:[a-z0-9-]+\\.supabase\\.co|localhost(?::\\d+)?|127\\.0\\.0\\.1(?::\\d+)?)(?:\\/.*)?$/i.test(url)) return null;
+  if (!url || !key) return null;
   try {
+    const parsedUrl = new URL(url);
+    const localHost = parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1';
+    const acceptedHost = parsedUrl.hostname.endsWith('.supabase.co') || localHost;
+    const acceptedProtocol = parsedUrl.protocol === 'https:' || (localHost && parsedUrl.protocol === 'http:');
+    if (!acceptedHost || !acceptedProtocol) return null;
     return createClient(url, key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
       realtime: { params: { eventsPerSecond: 10 } },
@@ -284,7 +289,7 @@ export function MasterChat() {
           <li>Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the local .env and Vercel project environment variables.</li>
           <li>Turn off email confirmation in Supabase Auth for username-only accounts, then redeploy.</li>
         </ol>
-        <p className="hint">Only the public anon/publishable key belongs in frontend settings. Never put a Supabase service-role key in website code or Vercel's VITE_ variables.</p>
+        <p className="hint">Only the public publishable key belongs in frontend settings. Never put a Supabase service-role key in website code or Vercel's VITE_ variables.</p>
       </div>
     </section>;
   }
