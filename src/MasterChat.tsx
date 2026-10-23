@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
+import { getConversationMessages, mergeConversationMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string };
 type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
@@ -87,9 +88,7 @@ const supabaseClient = (() => {
 const validUsername = (value: string) => /^[a-zA-Z0-9_]{3,20}$/.test(value);
 const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell.invalid';
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-const sameConversation = (message: ChatMessage, userId: string, peerId: string) =>
-  (message.sender_id === userId && message.recipient_id === peerId) ||
-  (message.sender_id === peerId && message.recipient_id === userId);
+
 
 export function MasterChat() {
   const [session, setSession] = useState<Session | null>(null);
@@ -249,6 +248,8 @@ export function MasterChat() {
       return;
     }
     let mounted = true;
+    // Keep the state scoped to this pair while loading; the render also filters defensively.
+    setMessages(current => getConversationMessages(current, profile.id, activePerson.id));
     const loadConversation = async () => {
       const filter = 'and(sender_id.eq.' + profile.id + ',recipient_id.eq.' + activePerson.id + '),and(sender_id.eq.' + activePerson.id + ',recipient_id.eq.' + profile.id + ')';
       const { data, error } = await supabaseClient.from('aeroshell_messages')
@@ -259,11 +260,7 @@ export function MasterChat() {
         tell('Could not load this conversation. Confirm the message-table policies are installed.', 'error');
         return;
       }
-      setMessages(current => {
-        const byId = new Map(current.map(message => [message.id, message]));
-        for (const message of (data ?? []) as ChatMessage[]) byId.set(message.id, message);
-        return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
-      });
+      setMessages(current => mergeConversationMessages(current, (data ?? []) as ChatMessage[], profile.id, activePerson.id));
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
@@ -300,6 +297,12 @@ export function MasterChat() {
     const query = peopleQuery.trim().toLowerCase();
     return people.filter(person => !query || person.username.toLowerCase().includes(query));
   }, [people, peopleQuery]);
+
+  // Never render cached messages unless both endpoints match the active conversation.
+  const conversationMessages = useMemo(
+    () => profile && activePerson ? getConversationMessages(messages, profile.id, activePerson.id) : [],
+    [messages, profile, activePerson],
+  );
 
   const submitAuth = async (event: FormEvent) => {
     event.preventDefault();
@@ -672,7 +675,7 @@ export function MasterChat() {
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setActivePerson(person); setNotice(''); }}>
+        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setMessages([]); setActivePerson(person); setNotice(''); }}>
           <span className="master-chat-avatar">{person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
@@ -687,10 +690,10 @@ export function MasterChat() {
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
-          {!messages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>Only the conversation participants can retrieve messages through the app. Message text is not end-to-end encrypted.</p></div>}
-          {messages.map((message, index) => {
+          {!conversationMessages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>Only the conversation participants can retrieve messages through the app. Message text is not end-to-end encrypted.</p></div>}
+          {conversationMessages.map((message, index) => {
             const mine = message.sender_id === profile.id;
-            const previous = messages[index - 1];
+            const previous = conversationMessages[index - 1];
             const grouped = previous?.sender_id === message.sender_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
             return <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')} key={message.id}>
               {!mine && !grouped && <span className="master-chat-tiny-avatar">{activePerson.username.slice(0, 1).toUpperCase()}</span>}
