@@ -428,7 +428,7 @@ export function MasterChat() {
     event.preventDefault();
     if (pinBusy) return;
     setPinError('');
-    if (!/^\\d{4}$/.test(pinInput)) {
+    if (!/^\d{4}$/.test(pinInput)) {
       setPinError('Enter exactly four digits.');
       return;
     }
@@ -498,7 +498,7 @@ export function MasterChat() {
     setPinChangeBusy(true);
     setPinChangeError('');
     try {
-      if (!/^\\d{4}$/.test(pinCurrentValue) || !/^\\d{4}$/.test(pinNewValue)) {
+      if (!/^\d{4}$/.test(pinCurrentValue) || !/^\d{4}$/.test(pinNewValue)) {
         setPinChangeError('Enter four digits for both the current and new PIN.');
         return;
       }
@@ -596,11 +596,11 @@ export function MasterChat() {
         {!isRepair && <>
           <label className="master-chat-pin-label">{isSetup ? 'New PIN' : 'Four-digit PIN'}
             <input autoFocus inputMode="numeric" pattern="[0-9]{4}" type="password" autoComplete="off" maxLength={4} value={pinInput}
-              onChange={event => setPinInput(event.target.value.replace(/\\D/g, '').slice(0, 4))} aria-label="Four-digit app PIN" required/>
+              onChange={event => setPinInput(event.target.value.replace(/\D/g, '').slice(0, 4))} aria-label="Four-digit app PIN" required/>
           </label>
           {isSetup && <label className="master-chat-pin-label">Confirm PIN
             <input inputMode="numeric" pattern="[0-9]{4}" type="password" autoComplete="off" maxLength={4} value={pinConfirm}
-              onChange={event => setPinConfirm(event.target.value.replace(/\\D/g, '').slice(0, 4))} aria-label="Confirm four-digit app PIN" required/>
+              onChange={event => setPinConfirm(event.target.value.replace(/\D/g, '').slice(0, 4))} aria-label="Confirm four-digit app PIN" required/>
           </label>}
           {cooldownSeconds > 0 && !isSetup && <p className="master-chat-pin-warning"><AlertTriangle size={15}/> Too many attempts. Try again in {cooldownSeconds}s.</p>}
         </>}
@@ -697,9 +697,9 @@ export function MasterChat() {
         <button type="button" className="master-chat-pin-close" title="Close PIN settings" onClick={() => setPinChangeOpen(false)}><X size={18}/></button>
         <span className="master-chat-pin-icon"><ShieldCheck size={23}/></span><h3>Privacy &amp; app PIN</h3>
         <p>The PIN locks this browser’s Master Chat interface only. It does not encrypt online message content.</p>
-        <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
-        <label>New four-digit PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
-        <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\\D/g,'').slice(0,4))} required/></label>
+        <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
+        <label>New four-digit PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
+        <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         {pinChangeError && <p className="master-chat-notice error" role="alert">{pinChangeError}</p>}
         <button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':'Change PIN'}</button>
       </form>
