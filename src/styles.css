@@ -832,3 +832,247 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 
 /* Touch-friendly, persistent iOS-style icon drag/reorder affordance. */
 .ios-drag-ghost{position:fixed;z-index:30;display:flex;align-items:center;flex-direction:column;gap:6px;width:clamp(64px,18vw,88px);transform:translate(-50%,-50%) scale(1.08);pointer-events:none;filter:drop-shadow(0 14px 22px #0007);opacity:.98;will-change:left,top,transform}.ios-drag-ghost .ios-icon-art{width:clamp(49px,14vw,65px);height:clamp(49px,14vw,65px)}.ios-drag-ghost>span:last-child{width:100%;overflow:hidden;text-overflow:ellipsis;text-align:center;color:#fff;font-size:10px;font-weight:650;line-height:1.2;text-shadow:0 2px 7px #000b;white-space:nowrap}.ios-app-icon.is-being-dragged{opacity:.18!important;animation:none!important;transform:scale(.94)!important}.ios-home-screen.is-dragging-to-dock .ios-dock{outline:2px solid #ffffffad;outline-offset:4px;transform:translateY(-3px) scale(1.015);background:linear-gradient(125deg,#d8e1ff55,#f4f5ff4a 55%,#c8cfff55)}@media(prefers-reduced-motion:reduce){.ios-drag-ghost{transition:none!important}}
+
+
+/* Classic, monochrome Windows Setup-inspired first-run flow (Windows mode only). */
+.setup-screen.setup-classic-desktop{
+  position:fixed;inset:0;z-index:9999;width:100%;height:100%;min-height:100dvh;
+  display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:0;
+  overflow:hidden;padding:0;background:#fff;color:#171717;
+  font-family:"Segoe UI",Arial,system-ui,sans-serif;
+}
+.setup-screen.setup-classic-desktop .setup-ambient{display:none}
+.setup-screen.setup-classic-desktop .setup-topbar{
+  z-index:2;flex:0 0 64px;width:100%;max-width:none;min-width:0;min-height:64px;
+  padding:0 30px;box-sizing:border-box;gap:16px;background:#fff;border-bottom:1px solid #d6d6d6;
+}
+.setup-screen.setup-classic-desktop .setup-brand{gap:11px}
+.setup-screen.setup-classic-desktop .setup-brand-icon{
+  width:34px;height:34px;flex:0 0 34px;border-radius:2px;display:grid;place-items:center;
+  border:1px solid #c9c9c9;background:#fff;color:#202020;box-shadow:none;font-size:19px;
+}
+.setup-screen.setup-classic-desktop .setup-brand>span:last-child{gap:3px}
+.setup-screen.setup-classic-desktop .setup-brand strong{color:#171717;font-size:13px;font-weight:600}
+.setup-screen.setup-classic-desktop .setup-brand small{color:#555;font-size:10px}
+.setup-screen.setup-classic-desktop .setup-top-actions{gap:12px}
+.setup-screen.setup-classic-desktop .setup-top-actions>span{color:#555;font-size:10px;font-weight:500;letter-spacing:.2px}
+.setup-screen.setup-classic-desktop .setup-skip{
+  min-height:30px;padding:5px 12px;border:1px solid #777;border-radius:2px;
+  background:#fff;color:#222;font-size:11px;font-weight:400;box-shadow:none;
+}
+.setup-screen.setup-classic-desktop .setup-skip:hover{background:#f2f2f2}
+.setup-screen.setup-classic-desktop .setup-card,
+.setup-screen.setup-classic-desktop .setup-card-expanded{
+  flex:1 1 auto;width:100%;max-width:none;min-height:0;max-height:none;min-width:0;
+  box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
+  margin:0;padding:0 clamp(22px,7.5vw,110px) 20px;
+  border:0;border-radius:0;background:#fff;box-shadow:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.setup-screen.setup-classic-desktop .setup-stepper{display:none}
+.setup-screen.setup-classic-desktop .setup-page{
+  width:min(100%,900px);box-sizing:border-box;min-height:0;margin:0 auto;
+  padding:clamp(28px,6vh,62px) 0 28px;animation:none;
+}
+.setup-screen.setup-classic-desktop .setup-welcome{text-align:left;padding-top:clamp(28px,6vh,62px)}
+.setup-screen.setup-classic-desktop .setup-hero-logo,
+.setup-screen.setup-classic-desktop .setup-install-mark{
+  width:48px;height:48px;min-width:48px;min-height:48px;margin:0 0 23px;
+  border:1px solid #c8c8c8;border-radius:2px;background:#fff;color:#222;box-shadow:none;
+}
+.setup-screen.setup-classic-desktop .setup-hero-logo span,
+.setup-screen.setup-classic-desktop .setup-install-mark span{font-size:27px;line-height:1}
+.setup-screen.setup-classic-desktop .setup-eyebrow{
+  margin:0 0 9px!important;color:#505050!important;font-size:10px!important;
+  font-weight:600;letter-spacing:1px;
+}
+.setup-screen.setup-classic-desktop .setup-page h1{
+  max-width:760px;margin:0 0 13px;color:#141414;font-size:clamp(25px,3vw,33px);
+  font-weight:500;line-height:1.22;letter-spacing:-.45px;
+}
+.setup-screen.setup-classic-desktop .setup-lead{
+  max-width:650px;margin:0 0 26px!important;color:#444!important;
+  font-size:13px!important;line-height:1.75!important;
+}
+.setup-screen.setup-classic-desktop .setup-welcome .setup-lead{margin:0 0 25px!important}
+.setup-screen.setup-classic-desktop .setup-mode-picker{width:min(100%,620px);margin:23px 0}
+.setup-screen.setup-classic-desktop .setup-mode-picker>b{display:block;margin-bottom:10px;color:#222;font-size:12px;font-weight:600}
+.setup-screen.setup-classic-desktop .setup-mode-picker>div{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.setup-screen.setup-classic-desktop .setup-mode-picker button{
+  flex:1 1 220px;min-height:67px;display:flex;align-items:center;gap:12px;padding:12px 14px;
+  border:1px solid #c8c8c8;border-radius:2px;background:#fff;color:#222;box-shadow:none;
+  text-align:left;transition:none;
+}
+.setup-screen.setup-classic-desktop .setup-mode-picker button:hover{background:#f7f7f7;transform:none}
+.setup-screen.setup-classic-desktop .setup-mode-picker button.selected{
+  border-color:#555;background:#f3f3f3;box-shadow:inset 0 0 0 1px #777;
+}
+.setup-screen.setup-classic-desktop .setup-mode-picker button>svg{flex-shrink:0;color:#222}
+.setup-screen.setup-classic-desktop .setup-mode-picker button span{display:flex;flex:1;flex-direction:column;gap:4px}
+.setup-screen.setup-classic-desktop .setup-mode-picker button strong{color:#222;font-size:12px;font-weight:600}
+.setup-screen.setup-classic-desktop .setup-mode-picker button small{color:#555;font-size:10px}
+.setup-screen.setup-classic-desktop .setup-feature-row{justify-content:flex-start;gap:8px;margin-top:22px}
+.setup-screen.setup-classic-desktop .setup-feature-row span{
+  padding:7px 0;margin-right:14px;gap:7px;border:0;border-radius:0;background:transparent;
+  color:#444;font-size:10px;
+}
+.setup-screen.setup-classic-desktop .setup-feature-row svg,
+.setup-screen.setup-classic-desktop .setup-safe-note svg,
+.setup-screen.setup-classic-desktop .setup-complete-summary svg{color:#333}
+.setup-screen.setup-classic-desktop .setup-steps-preview{
+  max-width:620px;display:flex;flex-direction:column;gap:6px;margin-top:23px;padding:13px 14px;
+  border:1px solid #d4d4d4;border-radius:2px;background:#fff;text-align:left;
+}
+.setup-screen.setup-classic-desktop .setup-steps-preview b{color:#222;font-size:11px;font-weight:600}
+.setup-screen.setup-classic-desktop .setup-steps-preview span{color:#555;font-size:10px;line-height:1.6}
+.setup-screen.setup-classic-desktop .setup-field{width:min(100%,520px);gap:7px;margin:15px 0;color:#222;font-size:12px;font-weight:500}
+.setup-screen.setup-classic-desktop .setup-field select,
+.setup-screen.setup-classic-desktop .setup-field input:not([type=color]):not([type=checkbox]):not([type=range]){
+  width:100%;min-height:39px;box-sizing:border-box;border:1px solid #888;border-radius:2px;
+  background:#fff;color:#171717;padding:0 10px;font:inherit;font-weight:400;outline:none;box-shadow:none;
+}
+.setup-screen.setup-classic-desktop .setup-field select:focus,
+.setup-screen.setup-classic-desktop .setup-field input:focus{border-color:#222;outline:1px solid #333;outline-offset:0;box-shadow:none}
+.setup-screen.setup-classic-desktop .setup-help{color:#555!important;font-size:10px!important;line-height:1.65!important}
+.setup-screen.setup-classic-desktop .setup-choice-grid{gap:10px}
+.setup-screen.setup-classic-desktop .setup-choice{
+  gap:9px;padding:13px;border:1px solid #c9c9c9;border-radius:2px;
+  background:#fff;color:#222;box-shadow:none;
+}
+.setup-screen.setup-classic-desktop .setup-choice:hover,
+.setup-screen.setup-classic-desktop .setup-choice.selected{
+  border-color:#555;background:#f4f4f4;box-shadow:inset 0 0 0 1px #888;
+}
+.setup-screen.setup-classic-desktop .setup-choice strong{color:#222;font-size:12px;font-weight:600}
+.setup-screen.setup-classic-desktop .setup-choice small{color:#555;font-size:10px}
+.setup-screen.setup-classic-desktop .setup-keyboard-art{
+  border:1px solid #ccc;border-radius:2px;background:#f4f4f4;color:#222;
+}
+.setup-screen.setup-classic-desktop .setup-info-card{
+  width:min(100%,520px);box-sizing:border-box;gap:9px;margin-top:13px;padding:12px;
+  border:1px solid #d1d1d1;border-radius:2px;background:#fff;color:#444;
+}
+.setup-screen.setup-classic-desktop .setup-info-card>svg{color:#333}
+.setup-screen.setup-classic-desktop .setup-info-card p{color:#444;font-size:10px;line-height:1.65}
+.setup-screen.setup-classic-desktop .setup-theme-options{gap:9px}
+.setup-screen.setup-classic-desktop .setup-theme-option{
+  border:1px solid #c9c9c9;border-radius:2px;background:#fff;color:#222;
+}
+.setup-screen.setup-classic-desktop .setup-theme-option.selected{
+  border-color:#555;background:#f4f4f4;box-shadow:inset 0 0 0 1px #888;
+}
+.setup-screen.setup-classic-desktop .setup-theme-option b{color:#222;font-size:11px}
+.setup-screen.setup-classic-desktop .setup-theme-option small{color:#555}
+.setup-screen.setup-classic-desktop .setup-accent-field input[type=color]{border:1px solid #888;border-radius:2px;background:#fff}
+.setup-screen.setup-classic-desktop .setup-wallpaper-option{
+  border:1px solid #c9c9c9;border-radius:2px;background:#fff;color:#222;
+}
+.setup-screen.setup-classic-desktop .setup-wallpaper-option.selected{border-color:#333;box-shadow:inset 0 0 0 1px #555}
+.setup-screen.setup-classic-desktop .setup-sound-card{
+  max-width:620px;box-sizing:border-box;padding:14px;border:1px solid #d0d0d0;
+  border-radius:2px;background:#fff;
+}
+.setup-screen.setup-classic-desktop .setup-option-icon{border:1px solid #ccc;border-radius:2px;background:#f6f6f6;color:#222}
+.setup-screen.setup-classic-desktop .setup-option-heading b{color:#222;font-size:11px}
+.setup-screen.setup-classic-desktop .setup-option-heading small,
+.setup-screen.setup-classic-desktop .setup-range-ends{color:#555}
+.setup-screen.setup-classic-desktop .setup-sound-card input[type=range]{accent-color:#444}
+.setup-screen.setup-classic-desktop .setup-volume-warning{border-top-color:#ddd;color:#555}
+.setup-screen.setup-classic-desktop .setup-toggle{border-bottom-color:#ddd}
+.setup-screen.setup-classic-desktop .setup-toggle strong{color:#222}
+.setup-screen.setup-classic-desktop .setup-toggle small{color:#555}
+.setup-screen.setup-classic-desktop .setup-toggle input,
+.setup-screen.setup-classic-desktop .setup-app-choice>input{accent-color:#333}
+.setup-screen.setup-classic-desktop .setup-privacy-card{
+  gap:12px;padding:15px;border:1px solid #d1d1d1;border-radius:2px;background:#fff;
+}
+.setup-screen.setup-classic-desktop .setup-privacy-icon{border:1px solid #ddd;border-radius:2px;background:#f5f5f5;color:#222}
+.setup-screen.setup-classic-desktop .setup-privacy-card strong{color:#222}
+.setup-screen.setup-classic-desktop .setup-privacy-card p{color:#444;font-size:11px;line-height:1.7}
+.setup-screen.setup-classic-desktop .setup-privacy-checks{gap:8px}
+.setup-screen.setup-classic-desktop .setup-privacy-checks span{
+  padding:8px;border:1px solid #ddd;border-radius:2px;background:#fff;color:#444;font-size:10px;
+}
+.setup-screen.setup-classic-desktop .setup-privacy-checks svg{color:#333}
+.setup-screen.setup-classic-desktop .setup-app-choice{
+  padding:11px;border:1px solid #ccc;border-radius:2px;background:#fff;color:#222;
+}
+.setup-screen.setup-classic-desktop .setup-app-choice.selected{border-color:#555;background:#f4f4f4}
+.setup-screen.setup-classic-desktop .setup-app-choice-check{border:1px solid #aaa;border-radius:2px;background:#fff;color:transparent}
+.setup-screen.setup-classic-desktop .setup-app-choice.selected .setup-app-choice-check{border-color:#555;background:#555;color:#fff}
+.setup-screen.setup-classic-desktop .setup-app-choice-copy b{color:#222;font-size:11px}
+.setup-screen.setup-classic-desktop .setup-app-choice-copy small{color:#555;font-size:10px}
+.setup-screen.setup-classic-desktop .setup-app-choice-summary{color:#444!important;font-size:11px!important;line-height:1.65}
+.setup-screen.setup-classic-desktop .setup-install-page{text-align:left}
+.setup-screen.setup-classic-desktop .setup-install-mark{margin-left:0;margin-right:0}
+.setup-screen.setup-classic-desktop .setup-install-page .setup-lead{margin:0 0 25px!important}
+.setup-screen.setup-classic-desktop .setup-progress-track{
+  height:10px;box-sizing:border-box;border:1px solid #999;border-radius:0;background:#f6f6f6;
+}
+.setup-screen.setup-classic-desktop .setup-progress-track>span{border-radius:0;background:#454545;transition:width .18s linear}
+.setup-screen.setup-classic-desktop .setup-progress-meta{color:#444}
+.setup-screen.setup-classic-desktop .setup-progress-meta strong{color:#222}
+.setup-screen.setup-classic-desktop .setup-install-list span{color:#555;font-size:11px}
+.setup-screen.setup-classic-desktop .setup-install-list span svg{color:#777}
+.setup-screen.setup-classic-desktop .setup-install-list span.done{color:#222}
+.setup-screen.setup-classic-desktop .setup-install-list span.done svg{color:#333}
+.setup-screen.setup-classic-desktop .setup-complete-page{text-align:left}
+.setup-screen.setup-classic-desktop .setup-complete-mark{
+  width:48px;height:48px;margin:0 0 22px;border:1px solid #aaa;border-radius:2px;
+  background:#fff;color:#222;
+}
+.setup-screen.setup-classic-desktop .setup-complete-page .setup-lead{margin:0 0 20px!important}
+.setup-screen.setup-classic-desktop .setup-complete-summary{width:min(100%,520px);margin:0;text-align:left}
+.setup-screen.setup-classic-desktop .setup-complete-summary span{color:#333;font-size:11px}
+.setup-screen.setup-classic-desktop .setup-actions{
+  position:sticky;bottom:0;z-index:2;display:flex;gap:9px;flex-wrap:wrap;
+  justify-content:flex-end;margin:0;padding:13px 0 max(14px,env(safe-area-inset-bottom,0px));
+  border-top:1px solid #d5d5d5;background:#fff;
+}
+.setup-screen.setup-classic-desktop .setup-primary,
+.setup-screen.setup-classic-desktop .setup-back{
+  min-width:86px;min-height:34px;padding:0 18px;gap:7px;border:1px solid #777;
+  border-radius:2px;background:#fff;color:#171717;box-shadow:none;
+  font-size:12px;font-weight:400;transition:none;
+}
+.setup-screen.setup-classic-desktop .setup-primary:hover:not(:disabled),
+.setup-screen.setup-classic-desktop .setup-back:hover{filter:none;transform:none;background:#f2f2f2}
+.setup-screen.setup-classic-desktop .setup-primary:disabled{background:#f5f5f5;color:#555;opacity:1}
+.setup-screen.setup-classic-desktop .setup-back{margin-right:auto}
+.setup-screen.setup-classic-desktop .setup-disclaimer{
+  flex:0 0 auto;box-sizing:border-box;width:100%;max-width:none;margin:0;padding:10px 24px 12px;
+  border-top:1px solid #e1e1e1;background:#fff;color:#555;font-size:9px;line-height:1.5;
+}
+.setup-screen.setup-classic-desktop .setup-disclaimer svg{color:#555}
+@media(max-width:620px){
+  .setup-screen.setup-classic-desktop .setup-topbar{flex-basis:58px;min-height:58px;padding:0 13px;gap:8px}
+  .setup-screen.setup-classic-desktop .setup-brand{gap:8px}
+  .setup-screen.setup-classic-desktop .setup-brand-icon{width:29px;height:29px;flex-basis:29px}
+  .setup-screen.setup-classic-desktop .setup-brand strong{font-size:12px}
+  .setup-screen.setup-classic-desktop .setup-brand small{display:none}
+  .setup-screen.setup-classic-desktop .setup-top-actions{gap:7px}
+  .setup-screen.setup-classic-desktop .setup-top-actions>span{display:none}
+  .setup-screen.setup-classic-desktop .setup-skip{padding:5px 8px;font-size:10px}
+  .setup-screen.setup-classic-desktop .setup-card,
+  .setup-screen.setup-classic-desktop .setup-card-expanded{padding-right:17px;padding-left:17px}
+  .setup-screen.setup-classic-desktop .setup-page{padding-top:28px;padding-bottom:20px}
+  .setup-screen.setup-classic-desktop .setup-page h1{font-size:25px}
+  .setup-screen.setup-classic-desktop .setup-choice-grid{grid-template-columns:1fr}
+  .setup-screen.setup-classic-desktop .setup-choice{display:grid;grid-template-columns:85px minmax(0,1fr);gap:5px 10px}
+  .setup-screen.setup-classic-desktop .setup-keyboard-art{grid-column:1;grid-row:1/3;height:100%;padding:10px 1px}
+  .setup-screen.setup-classic-desktop .setup-choice strong,
+  .setup-screen.setup-classic-desktop .setup-choice small{grid-column:2}
+  .setup-screen.setup-classic-desktop .setup-privacy-checks{grid-template-columns:1fr}
+  .setup-screen.setup-classic-desktop .setup-app-choice-grid{grid-template-columns:1fr}
+  .setup-screen.setup-classic-desktop .setup-wallpaper-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .setup-screen.setup-classic-desktop .setup-actions{padding-top:10px}
+  .setup-screen.setup-classic-desktop .setup-primary,
+  .setup-screen.setup-classic-desktop .setup-back{min-width:75px;padding:0 13px}
+  .setup-screen.setup-classic-desktop .setup-disclaimer{justify-content:flex-start;padding:8px 13px 10px;text-align:left}
+}
+@media(prefers-reduced-motion:reduce){
+  .setup-screen.setup-classic-desktop .setup-page,
+  .setup-screen.setup-classic-desktop .setup-progress-track>span,
+  .setup-screen.setup-classic-desktop .setup-primary,
+  .setup-screen.setup-classic-desktop .setup-back{animation:none!important;transition:none!important}
+}
