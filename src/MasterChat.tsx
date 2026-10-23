@@ -90,7 +90,7 @@ const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 
-export function MasterChat({ iosMode = false }: { iosMode?: boolean } = {}) {
+export function MasterChat({ iosMode = false, showCallLauncher = true }: { iosMode?: boolean; showCallLauncher?: boolean } = {}) {
   const chatRootRef = useRef<HTMLElement | null>(null);
   const nativeChatFullscreenRef = useRef(false);
   const [conversationFullscreen, setConversationFullscreen] = useState(false);
@@ -729,7 +729,7 @@ export function MasterChat({ iosMode = false }: { iosMode?: boolean } = {}) {
   }
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session}/>
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !conversationFullscreen}/>
     {conversationFullscreen && <button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button></div>

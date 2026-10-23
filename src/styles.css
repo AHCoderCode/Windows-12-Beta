@@ -1639,3 +1639,76 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 @media(prefers-reduced-motion:reduce){
   .master-chat-fullscreen-exit{backdrop-filter:none}
 }
+
+
+/* Master Chat call flow reliability: global launcher and explicit recipient picker. */
+.master-chat-voice-call-button{
+  position:fixed!important;
+  inset:calc(env(safe-area-inset-top,0px) + 10px) calc(env(safe-area-inset-right,0px) + 12px) auto auto!important;
+  z-index:2147483640!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-width:42px;
+  min-height:40px;
+  padding:0 12px!important;
+  gap:7px;
+  border-radius:12px!important;
+  box-shadow:0 8px 30px #02081442!important;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+}
+.master-chat-recipient-picker-overlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483642!important;
+  display:grid;
+  place-items:center;
+  overflow:auto;
+  padding:18px;
+  background:#050a15c9;
+  -webkit-backdrop-filter:blur(18px);
+  backdrop-filter:blur(18px);
+}
+.master-chat-recipient-picker{
+  width:min(100%,420px);
+  max-height:min(82dvh,660px);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  overflow:hidden;
+  padding:20px;
+  border:1px solid #ffffff1e;
+  border-radius:22px;
+  background:linear-gradient(145deg,#18273b,#0c1526);
+  color:#f4f7ff;
+  box-shadow:0 28px 110px #0009;
+}
+.master-chat-recipient-picker>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.master-chat-recipient-picker>header>span{display:flex;align-items:center;gap:9px;min-width:0}
+.master-chat-recipient-picker>header>span svg{color:#83dcb6;flex-shrink:0}
+.master-chat-recipient-picker>header b{font-size:17px;letter-spacing:-.25px}
+.master-chat-recipient-picker>header>button{flex:0 0 auto;display:grid;place-items:center;width:34px;height:34px;border:1px solid #ffffff22;border-radius:10px;background:#ffffff09;color:#e8edfa}
+.master-chat-recipient-picker>p{margin:0;color:#b9c5dd;font-size:12px;line-height:1.65}
+.master-chat-recipient-picker-list{display:flex;flex-direction:column;gap:7px;min-height:0;overflow:auto;padding:2px}
+.master-chat-recipient-picker-list>button{display:flex;align-items:center;gap:11px;width:100%;min-height:61px;padding:9px 10px;border:1px solid #ffffff17;border-radius:13px;background:#ffffff08;color:#f4f7ff;text-align:left;touch-action:manipulation}
+.master-chat-recipient-picker-list>button:hover:not(:disabled){background:#ffffff13;border-color:#8b9dff70}
+.master-chat-recipient-picker-list>button:disabled{opacity:.55}
+.master-chat-recipient-avatar{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:linear-gradient(145deg,#9abcf2,#b9a3f1);color:#17263f;font-size:14px;font-weight:850}
+.master-chat-recipient-label{display:flex;flex:1;flex-direction:column;gap:5px;min-width:0}
+.master-chat-recipient-label b{font-size:13px;overflow-wrap:anywhere}
+.master-chat-recipient-label small{font-size:10px;color:#aab8d4}
+.master-chat-recipient-picker-list>button>svg{flex-shrink:0;color:#80d5ad}
+.master-chat-recipient-empty{display:flex;flex-direction:column;align-items:center;gap:7px;padding:28px 14px;color:#c8d2e6;text-align:center}
+.master-chat-recipient-empty>span{font-size:11px;color:#aab8d4}
+.master-chat-recipient-security{display:flex;align-items:flex-start;gap:7px;color:#aab8d4;font-size:10px;line-height:1.65}
+.master-chat-recipient-security svg{flex:0 0 auto;color:#80d5ad;margin-top:1px}
+.master-chat-voice-notice{position:fixed!important;right:12px!important;bottom:12px!important;z-index:2147483644!important}
+.master-chat-call-overlay{position:fixed!important;inset:0!important;z-index:2147483643!important}
+.master-chat-conversation-fullscreen .master-chat-voice-call-button,
+.master-chat-conversation-fullscreen .master-chat-recipient-picker-overlay{display:none!important}
+@media(max-width:620px){
+  .master-chat-voice-call-button{min-height:42px!important;padding:0 11px!important;border-radius:14px!important}
+  .master-chat-recipient-picker-overlay{padding:12px}
+  .master-chat-recipient-picker{padding:16px;border-radius:20px;max-height:calc(100dvh - 24px)}
+}
