@@ -1523,3 +1523,119 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .desktop.fullscreen-window-open .window.maximized{
   z-index:2147483000!important;
 }
+
+
+/* Master Chat iOS messages-only fullscreen and call-button stacking fix. */
+.window.ios-master-chat-window{
+  z-index:2147483000!important;
+}
+.master-chat-voice-call-button{
+  position:fixed!important;
+  top:calc(env(safe-area-inset-top,0px) + 12px)!important;
+  right:calc(env(safe-area-inset-right,0px) + 12px)!important;
+  z-index:2147483001!important;
+  min-width:38px;
+  min-height:36px;
+  touch-action:manipulation;
+}
+.master-chat-app.master-chat-conversation-fullscreen{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483000!important;
+  width:100vw!important;
+  width:100dvw!important;
+  height:100vh!important;
+  height:100dvh!important;
+  min-height:0!important;
+  max-height:none!important;
+  display:flex!important;
+  flex-direction:column!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  overflow:hidden!important;
+  border:0!important;
+  border-radius:0!important;
+  margin:0!important;
+  padding:0!important;
+  background:var(--surface)!important;
+  isolation:isolate;
+}
+.master-chat-conversation-fullscreen .master-chat-sidebar,
+.master-chat-conversation-fullscreen .master-chat-conversation-header,
+.master-chat-conversation-fullscreen .master-chat-inline-notice,
+.master-chat-conversation-fullscreen .master-chat-privacy-context,
+.master-chat-conversation-fullscreen .master-chat-voice-call-button,
+.master-chat-conversation-fullscreen .master-chat-voice-notice{
+  display:none!important;
+}
+.master-chat-conversation-fullscreen .master-chat-main{
+  display:flex!important;
+  flex:1 1 auto!important;
+  flex-direction:column!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  border:0!important;
+  border-radius:0!important;
+  background:var(--surface)!important;
+}
+.master-chat-conversation-fullscreen .master-chat-messages{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  padding:calc(env(safe-area-inset-top,0px) + 54px) 12px 16px!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+}
+.master-chat-conversation-fullscreen .master-chat-composer{
+  flex:0 0 auto;
+  padding:8px 10px calc(env(safe-area-inset-bottom,0px) + 10px)!important;
+  border-top:1px solid var(--border);
+}
+.master-chat-fullscreen-toggle{
+  display:none;
+  flex:0 0 auto;
+  place-items:center;
+  width:34px;
+  height:34px;
+  margin-left:5px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--soft);
+  color:var(--text);
+  touch-action:manipulation;
+}
+.master-chat-fullscreen-exit{
+  position:fixed!important;
+  top:calc(env(safe-area-inset-top,0px) + 9px)!important;
+  left:calc(env(safe-area-inset-left,0px) + 10px)!important;
+  z-index:2147483646!important;
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  border:1px solid var(--border);
+  border-radius:11px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);
+  color:var(--text);
+  box-shadow:0 4px 18px #0002;
+  backdrop-filter:blur(18px);
+  touch-action:manipulation;
+}
+.master-chat-app:fullscreen,
+.master-chat-app:-webkit-full-screen{
+  width:100vw!important;
+  width:100dvw!important;
+  height:100vh!important;
+  height:100dvh!important;
+  background:var(--surface)!important;
+}
+@media(max-width:620px){
+  .master-chat-fullscreen-toggle{display:grid}
+  .master-chat-app.master-chat-conversation-fullscreen .master-chat-messages{
+    padding-inline:10px!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .master-chat-fullscreen-exit{backdrop-filter:none}
+}
