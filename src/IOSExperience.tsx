@@ -282,7 +282,7 @@ export function IOSExperience({
         } else if (target.insideGrid) {
           const pageById = Object.fromEntries(homePages.map(item => [item.app.id, item.page]));
           const currentOrder = orderedHomeApps.map(app => app.id);
-          setSavedHomeOrder(reorderHomeAppIds(currentOrder, id, target.targetId ?? drag.targetAppId, target.page, pageById, target.insertAfter || drag.insertAfter));
+          setSavedHomeOrder(reorderHomeAppIds(currentOrder, id, target.targetId, target.page, pageById, target.insertAfter));
           setHomeAppPages(current => ({
             ...((current && typeof current === 'object') ? current : {}),
             ...pageById,
