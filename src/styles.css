@@ -1232,3 +1232,7 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .windows7-mode-shell .desktop-shortcut{width:68px;font-size:10px}
 }
 @media(prefers-reduced-motion:reduce){.windows7-mode-shell .taskbar,.windows7-mode-shell .window{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+.launch-mode-picker>div{grid-template-columns:repeat(3,minmax(0,1fr))}
+.setup-mode-picker>div{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:620px){.launch-mode-picker>div,.setup-mode-picker>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
