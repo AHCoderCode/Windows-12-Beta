@@ -159,22 +159,38 @@ AeroShell includes a separate browser-based iOS-inspired mobile mode alongside i
 This remains a web simulation, not Apple iOS. Radio, battery and device-status indicators are simulated; browser storage and site permissions remain controlled by the browser.
 
 
-## Master Chat (online multiplayer messaging)
+## Master Chat — privacy, messages, and voice calls
 
-Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. Unlike AeroShell's local desktop profile, messages are stored in a shared online database and can reach users on other devices.
+Master Chat uses **Supabase Auth, Postgres row-level security (RLS), and Realtime**. The dedicated production backend `windows-12-beta-chat` is hosted in Singapore. The schema includes per-user message hiding, sender-only delete-for-everyone permissions, participant-scoped voice-call signaling, and server-side rate limits. The Vercel `windows-12-beta` project has `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` set for its deployed environments.
 
-The dedicated production backend **windows-12-beta-chat** has been provisioned in Singapore. The Master Chat schema and both migrations are applied, row-level security is enabled, the message table is in the Realtime publication, and the `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` variables are configured on the Vercel **windows-12-beta** project for Production, Preview, and Development. The remaining provider settings below must be set before account signup and private Realtime access will work as intended.
+### Privacy behavior and limits
 
-### Final provider settings (one-time)
+- **Four-digit app PIN:** Required when the messaging app opens; separate from the account password. The PIN verifier is salted and derived in this browser with PBKDF2, and the app locks after five minutes of inactivity or when the tab is hidden. The stored verifier is not the PIN itself. This is only a local interface lock, not account authentication or encryption; someone with full control of the browser profile/developer tools can bypass it, and clearing site data can reset it.
+- **Hide message:** Hides a message only for the current account. RLS filters that message from that account's subsequent database queries; the other participant's copy is not deleted.
+- **Delete for everyone:** Available only on messages sent by the signed-in user. The database enforces sender ownership for deletion. Deletion removes the live database row and cannot undo what another person already read, copied, screenshotted, or retained elsewhere.
+- **Chat text is not end-to-end encrypted.** RLS is an access-control boundary, not encryption at rest controlled by the user. Do not send passwords or sensitive personal information.
+- **Voice calls:** Audio only, no camera permission. The WebRTC connection is configured for TURN relay candidates only and never silently falls back to direct peer connectivity, reducing exposure of each caller's public IP address to the other caller. Audio is encrypted by the WebRTC media transport, but this beta does not independently verify caller identity end-to-end; call metadata is stored in Supabase and a relay provider may process IP/session metadata. Signaling rows are removed when a call ends/rejects.
+- **Not zero-risk:** No website can guarantee zero flaws. This remains a beta without password recovery for the username-only accounts, verified identity, message blocking/reporting, full moderation, or an independent penetration test. Use only with people you trust.
 
-1. Open [Master Chat's Realtime settings](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/realtime/settings) and turn off **Allow public access** (private-channel-only authorization). The database already contains the per-channel authorization policies.
-2. Open [Master Chat's Auth providers](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/auth/providers), select the Email provider, and disable **Confirm email** for this username-only beta. Each username maps to a non-deliverable identity at the reserved `.invalid` domain; these accounts cannot receive password-reset emails.
-3. Reload [the live website](https://windows-12-beta.vercel.app/) and create a test account. Ask a trusted tester to create another account on a separate device/browser to verify the directory, private messages, and online presence.
+### Required Supabase settings
 
-The SQL source is `supabase/master-chat.sql`; versioned migrations live under `supabase/migrations/`. To set up another project, apply the full schema file once, configure the same two Vercel variables, and apply the same Auth and Realtime settings. For local development, copy `.env.example` to `.env.local` and fill in that project's URL and publishable key.
+1. Open [Realtime settings](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/realtime/settings) and turn off **Allow public access** so private channel authorization is enforced.
+2. In [Auth providers](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/auth/providers), select Email and disable **Confirm email** for username-only beta signup. The app maps usernames to non-deliverable `.invalid` identities, so those accounts cannot receive confirmation or password-reset emails.
+3. **Enable leaked-password protection** in Supabase Auth's password-security settings. The Supabase security advisor currently reports that this protection is disabled: [official guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). This dashboard setting is still outstanding.
+4. Test in [the live website](https://windows-12-beta.vercel.app/) with two accounts on separate browsers/devices. Confirm one user cannot delete the other's message, hide is account-specific, a locked app hides the conversation, and call accept/decline/end all work.
 
-Do not launch this as an open public chat without account recovery, blocking/reporting, abuse controls, rate limits and moderation. Until then, test only with people you know and do not share private personal information in messages.
+### Enable relay-only voice calls
 
-Only use the project's publishable key in `VITE_SUPABASE_PUBLISHABLE_KEY`. Never put the service-role/secret key in the client bundle. Row-level security allows authenticated users to discover usernames but read/create only messages where they are a participant. Passwords are managed by Supabase Auth, not stored in the app's profile/message tables.
+The Supabase Edge Function `master-chat-turn-credentials` is deployed with JWT verification enabled, and issues short-lived TURN credentials only for an authenticated participant in an active call. It **fails closed** until you configure the provider secrets—no direct-network fallback is enabled.
 
-The username-only beta does not provide account recovery, verified identity, blocking/reporting, rate limiting, or moderation tools yet. The production environment is connected, but the two provider settings above are required for the intended username-only signup and private Realtime channels.
+1. Create a Cloudflare Realtime TURN key and its API token in your own Cloudflare account. Follow [Cloudflare's credential-generation guide](https://developers.cloudflare.com/realtime/turn/generate-credentials/). Keep these values secret; do not paste them into chat or commit them to GitHub.
+2. In [Supabase Edge Function Secrets](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/functions/secrets), set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN`. Keep them server-side; never add them to a `VITE_*` variable or browser bundle.
+3. Reopen the website and test a call between two accounts. If these secrets are absent, a call should display a configuration error and must not try a direct peer connection.
+
+**Potential usage cost:** Cloudflare documents a 1,000 GB monthly shared free tier and $0.05 per GB of outbound TURN data after that allowance when using TURN without its Realtime SFU. Confirm the current plan and usage in your Cloudflare account before allowing regular calls: [Cloudflare TURN pricing](https://developers.cloudflare.com/realtime/turn/faq/).
+
+### SQL, keys, and data access
+
+The consolidated setup is `supabase/master-chat.sql`; individual migrations are under `supabase/migrations/`. For another project, apply the consolidated schema only after reviewing its impact, configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the intended Vercel project, and complete the Auth/Realtime settings above. For local development, copy `.env.example` to `.env.local`.
+
+Only the public publishable key belongs in browser code. Never put a Supabase service-role/secret key in frontend code or any `VITE_*` variable. Passwords are handled by Supabase Auth; they are not stored in the profiles/messages tables.
