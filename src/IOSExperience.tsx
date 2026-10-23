@@ -153,6 +153,10 @@ export function IOSExperience({
   useEffect(() => () => {
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
   }, []);
+  useEffect(() => {
+    setHiddenHomeApps(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : []);
+    setSavedDockIds(current => Array.isArray(current) ? current.filter(id => installed.includes(id)) : ['store', 'explorer', 'settings', 'notes']);
+  }, [installed, setHiddenHomeApps, setSavedDockIds]);
 
   const homeGestureStart = (event: ReactPointerEvent<HTMLElement>) => {
     if (!iosPrefs.gestures) return;
@@ -188,9 +192,9 @@ export function IOSExperience({
     const start = indicatorSwipe.current; indicatorSwipe.current = null;
     if (!start) return;
     const delta = event.clientY - start.y;
-    if (delta < -105) {
+    if (delta < -70) {
       didSwipeHomeIndicator.current = true;
-      if (delta < -185) showPanel('switcher');
+      if (delta < -145) showPanel('switcher');
       else onHome();
     }
   };
@@ -311,7 +315,7 @@ export function IOSExperience({
           <p>{apps.find(app=>app.id===contextApp)?.description}</p>
           <button onClick={()=>launch(contextApp)}><ArrowRight size={15}/> Open app</button>
           <button onClick={()=>{const index=homeApps.findIndex(app=>app.id===contextApp);const currentPage=Number.isInteger(safeHomePages[contextApp])?safeHomePages[contextApp]:Math.max(0,Math.floor(index/16));const nextPage=currentPage+1;setHomeAppPages(current=>({...((current&&typeof current==='object')?current:{}),[contextApp]:nextPage}));setPage(nextPage);setPanel(null);setContextApp(null);}}><MoveRight size={15}/> Move to next Home Screen page</button>
-          <button onClick={()=>{const next=[...safeDockIds.filter(id=>id!==contextApp),contextApp].slice(-4);setSavedDockIds(next);setHiddenHomeApps(current=>Array.isArray(current)?current.filter(id=>id!==contextApp):[]);setPanel(null);setContextApp(null);}}><Smartphone size={15}/> Move to dock</button>
+          <button onClick={()=>{const next=[...safeDockIds.filter(id=>id!==contextApp),contextApp].slice(-4);setSavedDockIds(next);setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setPanel(null);setContextApp(null);}}><Smartphone size={15}/> Move to dock</button>
           <button onClick={()=>{setHiddenHomeApps(current=>Array.from(new Set([...(Array.isArray(current)?current:[]),contextApp])));setSavedDockIds(current=>Array.isArray(current)?current.filter(id=>id!==contextApp):[]);setPanel(null);setContextApp(null);}}><X size={15}/> Remove from Home Screen</button>
           <button onClick={()=>{const app=apps.find(item=>item.id===contextApp);if(app?.defaultInstalled){onUninstallApp(contextApp);return;}const id=contextApp;setPanel(null);setContextApp(null);onUninstallApp(id);}}><Trash2 size={15}/> Uninstall app</button>
           <button onClick={()=>{setPanel('library');setLibraryQuery(apps.find(app=>app.id===contextApp)?.title??'');}}><Search size={15}/> Find in App Library</button>
