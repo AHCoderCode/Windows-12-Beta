@@ -39,10 +39,6 @@ function durationLabel(seconds: number) {
   return mm + ':' + ss;
 }
 
-function sameHexlessId(left: unknown, right: string) {
-  return typeof left === 'string' && left === right;
-}
-
 export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled }: Props) {
   const [activeCall, setActiveCall] = useState<CallView | null>(null);
   const [callState, setCallState] = useState<CallState>('idle');
@@ -346,7 +342,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       await replaySignals(current.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not accept the voice call.';
-      try { await client.from('aeroshell_calls').update({ status: 'rejected' }).eq('id', current.id).eq('status', 'ringing'); } catch { /* Local cleanup must still run. */ }
+      try { await client.from('aeroshell_calls').update({ status: 'ended' }).eq('id', current.id).in('status', ['ringing', 'accepted']); } catch { /* Local cleanup must still run. */ }
       cleanupLocal();
       setNotice(message);
     } finally {
@@ -370,8 +366,6 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     localStreamRef.current?.getAudioTracks().forEach(track => { track.enabled = !next; });
     setMuted(next);
   }, [muted]);
-
-  const activeCallRefId = activeCall?.id;
 
   useEffect(() => {
     mountedRef.current = true;
