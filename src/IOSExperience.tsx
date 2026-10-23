@@ -4,6 +4,7 @@ import {
   Monitor, Power, RotateCcw, Search, Settings, ShieldCheck, Smartphone, Sun, Trash2, Unlock, Volume2, Wifi, X
 } from 'lucide-react';
 import { getAppCategories, normalizeAppCategory } from './app-catalog';
+import { reorderHomeAppIds } from './home-layout';
 
 type Mode = 'windows12' | 'ios27';
 export type IOSAppItem = {
@@ -90,6 +91,7 @@ export function IOSExperience({
   const [page, setPage] = useState(0);
   const [hiddenHomeApps, setHiddenHomeApps] = useSavedLocal<string[]>('aeroshell.ios27.hidden-home-apps.v1', []);
   const [homeAppPages, setHomeAppPages] = useSavedLocal<Record<string, number>>('aeroshell.ios27.home-pages.v1', {});
+  const [savedHomeOrder, setSavedHomeOrder] = useSavedLocal<string[]>('aeroshell.ios27.home-order.v1', []);
   const [savedDockIds, setSavedDockIds] = useSavedLocal<string[]>('aeroshell.ios27.dock.v1', ['store', 'explorer', 'settings', 'notes']);
   const [widgetIds, setWidgetIds] = useSavedLocal<string[]>('aeroshell.ios27.widgets.v1', ['clock', 'calendar', 'reminders', 'music']);
 
@@ -97,7 +99,9 @@ export function IOSExperience({
   const [contextApp, setContextApp] = useState<string | null>(null);
   const [editingHomeScreen, setEditingHomeScreen] = useState(false);
   const [draggingToDock, setDraggingToDock] = useState(false);
-  const appDrag = useRef<{ id: string; startX: number; startY: number; startPage: number; targetPage: number; pointerId: number; active: boolean; fromDock: boolean } | null>(null);
+  const [draggedAppId, setDraggedAppId] = useState<string | null>(null);
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
+  const appDrag = useRef<{ id: string; startX: number; startY: number; startPage: number; targetPage: number; targetAppId: string | null; insertAfter: boolean; pointerId: number; active: boolean; fromDock: boolean; edgeLatch: 'left' | 'right' | null } | null>(null);
   const suppressClick = useRef(false);
   const suppressClickTimer = useRef<number | null>(null);
   const gesture = useRef<{ x: number; y: number; target: string } | null>(null);
@@ -109,15 +113,29 @@ export function IOSExperience({
   const safeHiddenApps = Array.isArray(hiddenHomeApps) ? hiddenHomeApps : [];
   const safeHomePages = homeAppPages && typeof homeAppPages === 'object' && !Array.isArray(homeAppPages) ? homeAppPages : {};
   const safeDockIds = Array.isArray(savedDockIds) ? savedDockIds : ['store', 'explorer', 'settings', 'notes'];
+  const safeHomeOrder = Array.isArray(savedHomeOrder) ? savedHomeOrder : [];
   const safeWidgetIds = Array.isArray(widgetIds) ? widgetIds.filter(id => ['clock', 'calendar', 'reminders', 'music', 'quick', 'focus', 'storage'].includes(id)) : ['clock', 'calendar', 'reminders', 'music'];
   const installedApps = useMemo(
     () => apps.filter(app => installed.includes(app.id)),
     [apps, installed],
   );
   const homeApps = useMemo(() => installedApps.filter(app => !safeHiddenApps.includes(app.id) && !safeDockIds.includes(app.id)), [installedApps, safeHiddenApps, safeDockIds]);
-  const homePages = useMemo(() => homeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? Math.min(50, safeHomePages[app.id]) : Math.floor(index / 16) })), [homeApps, safeHomePages]);
+  const orderedHomeApps = useMemo(() => {
+    const byId = new Map(homeApps.map(app => [app.id, app]));
+    const result: IOSAppItem[] = [];
+    const seen = new Set<string>();
+    for (const id of safeHomeOrder) {
+      const app = byId.get(id);
+      if (app && !seen.has(id)) { result.push(app); seen.add(id); }
+    }
+    for (const app of homeApps) {
+      if (!seen.has(app.id)) { result.push(app); seen.add(app.id); }
+    }
+    return result;
+  }, [homeApps, safeHomeOrder]);
+  const homePages = useMemo(() => orderedHomeApps.map((app, index) => ({ app, page: Number.isInteger(safeHomePages[app.id]) && safeHomePages[app.id] >= 0 ? Math.min(50, safeHomePages[app.id]) : Math.floor(index / 16) })), [orderedHomeApps, safeHomePages]);
   const homePageCount = Math.max(1, Math.ceil(homeApps.length / 16), ...homePages.map(item => item.page + 1));
-  const visibleHomeApps = homePages.filter(item => item.page === page).map(item => item.app);
+  const visibleHomeItems = homePages.filter(item => item.page === page);
   const dockIds = useMemo(() => safeDockIds.filter(id => installed.includes(id)).slice(-4), [safeDockIds, installed]);
   const openTaskCount = (() => { try { const value = JSON.parse(localStorage.getItem('aeroshell.tasks.v1') ?? '[]'); return Array.isArray(value) ? value.filter((task: { done?: boolean }) => !task.done).length : 0; } catch { return 0; } })();
   const localStorageEstimate = (() => { try { let bytes=0; for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i)??'';bytes+=(key.length+(localStorage.getItem(key)??'').length)*2;} return bytes<1024*1024?Math.max(1,Math.round(bytes/1024))+' KB':(bytes/1024/1024).toFixed(1)+' MB'; } catch { return 'Unavailable'; } })();
@@ -147,7 +165,7 @@ export function IOSExperience({
   const holdStart = (event: ReactPointerEvent<HTMLButtonElement>, appId: string, fromDock = false) => {
     longPressedRef.current = false;
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* capture is optional on older browsers */ }
-    appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, targetPage: page, pointerId: event.pointerId, active: false, fromDock };
+    appDrag.current = { id: appId, startX: event.clientX, startY: event.clientY, startPage: page, targetPage: page, targetAppId: null, insertAfter: false, pointerId: event.pointerId, active: false, fromDock, edgeLatch: null };
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = window.setTimeout(() => {
       longPressedRef.current = true;
@@ -160,39 +178,124 @@ export function IOSExperience({
     if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
     longPressTimer.current = null;
   };
-  const homeGestureMove = (event: ReactPointerEvent<HTMLElement>) => {
-    const drag = appDrag.current;
-    if (drag && drag.pointerId === event.pointerId && editingHomeScreen) {
-      if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 9) drag.active = true;
-      if (drag.active) {
-        const dx = event.clientX - drag.startX;
-        const targetPage = Math.max(0, Math.min(homePageCount, drag.startPage + (dx < -55 ? 1 : dx > 55 ? -1 : 0)));
-        drag.targetPage = targetPage;
-        if (targetPage !== page) setPage(targetPage);
-        setDraggingToDock(event.clientY > window.innerHeight - 118);
-        event.preventDefault();
-        return;
+  const resolveHomeDropTarget = (x: number, y: number, draggedId: string, fallbackPage: number) => {
+    const element = document.elementFromPoint(x, y) as HTMLElement | null;
+    const grid = element?.closest<HTMLElement>('.ios-icon-grid');
+    if (!grid) return { insideGrid: false, page: fallbackPage, targetId: null as string | null, insertAfter: false };
+
+    const rawPage = Number(grid.dataset.page);
+    const targetPage = Number.isInteger(rawPage) && rawPage >= 0 ? rawPage : fallbackPage;
+    const selected = element?.closest<HTMLElement>('[data-ios-app-id]');
+    const getInsertionSide = (node: HTMLElement) => {
+      const rect = node.getBoundingClientRect();
+      const deltaY = y - (rect.top + rect.height / 2);
+      const deltaX = x - (rect.left + rect.width / 2);
+      const rowTolerance = Math.min(12, rect.height * 0.15);
+      return deltaY > rowTolerance || (Math.abs(deltaY) <= rowTolerance && deltaX > 0);
+    };
+
+    if (selected && selected.dataset.iosAppId !== draggedId && selected.closest('.ios-icon-grid') === grid) {
+      const selectedPage = Number(selected.dataset.iosAppPage);
+      return {
+        insideGrid: true,
+        page: Number.isInteger(selectedPage) && selectedPage >= 0 ? selectedPage : targetPage,
+        targetId: selected.dataset.iosAppId ?? null,
+        insertAfter: getInsertionSide(selected),
+      };
+    }
+
+    const candidates = Array.from(grid.querySelectorAll<HTMLElement>('[data-ios-app-id]'))
+      .filter(node => node.dataset.iosAppId !== draggedId);
+    let nearest: HTMLElement | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const candidate of candidates) {
+      const rect = candidate.getBoundingClientRect();
+      const dx = x - (rect.left + rect.width / 2);
+      const dy = y - (rect.top + rect.height / 2);
+      const distance = dx * dx + dy * dy;
+      if (distance < nearestDistance) {
+        nearest = candidate;
+        nearestDistance = distance;
       }
     }
+    if (nearest) {
+      const selectedPage = Number(nearest.dataset.iosAppPage);
+      return {
+        insideGrid: true,
+        page: Number.isInteger(selectedPage) && selectedPage >= 0 ? selectedPage : targetPage,
+        targetId: nearest.dataset.iosAppId ?? null,
+        insertAfter: getInsertionSide(nearest),
+      };
+    }
+    return { insideGrid: true, page: targetPage, targetId: null as string | null, insertAfter: false };
   };
+
+  const homeGestureMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = appDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId || !editingHomeScreen) return;
+    if (!drag.active && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 9) drag.active = true;
+    if (!drag.active) return;
+
+    event.preventDefault();
+    setDraggedAppId(drag.id);
+    setDragPosition({ x: event.clientX, y: event.clientY });
+
+    const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const grid = hit?.closest<HTMLElement>('.ios-icon-grid');
+    if (grid) {
+      const edge = event.clientX <= 28 ? 'left' : event.clientX >= window.innerWidth - 28 ? 'right' : null;
+      if (edge && edge !== drag.edgeLatch) {
+        drag.edgeLatch = edge;
+        const rawPage = Number(grid.dataset.page);
+        const displayedPage = Number.isInteger(rawPage) && rawPage >= 0 ? rawPage : page;
+        const targetPage = edge === 'left' ? Math.max(0, displayedPage - 1) : Math.min(homePageCount, displayedPage + 1);
+        drag.targetPage = targetPage;
+        drag.targetAppId = null;
+        drag.insertAfter = false;
+        if (targetPage !== page) setPage(targetPage);
+      } else if (!edge) {
+        drag.edgeLatch = null;
+        const target = resolveHomeDropTarget(event.clientX, event.clientY, drag.id, page);
+        drag.targetPage = target.page;
+        drag.targetAppId = target.targetId;
+        drag.insertAfter = target.insertAfter;
+      }
+    } else {
+      drag.edgeLatch = null;
+    }
+
+    setDraggingToDock(event.clientY > window.innerHeight - 118 || Boolean(hit?.closest('.ios-dock')));
+  };
+
   const finishHomeGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = appDrag.current;
     if (drag) {
       holdEnd();
       if (drag.active) {
         const id = drag.id;
-        if (event.clientY > window.innerHeight - 118) {
+        const hit = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+        const dockDrop = event.clientY > window.innerHeight - 118 || Boolean(hit?.closest('.ios-dock'));
+        const target = resolveHomeDropTarget(event.clientX, event.clientY, id, drag.targetPage);
+        if (dockDrop) {
           setSavedDockIds(current => [...(Array.isArray(current) ? current.filter(item => item !== id) : []), id].slice(-4));
           setHiddenHomeApps(current => Array.from(new Set([...(Array.isArray(current) ? current : []), id])));
-          setPage(drag.targetPage);
-        } else {
+        } else if (target.insideGrid) {
+          const pageById = Object.fromEntries(homePages.map(item => [item.app.id, item.page]));
+          const currentOrder = orderedHomeApps.map(app => app.id);
+          setSavedHomeOrder(reorderHomeAppIds(currentOrder, id, target.targetId ?? drag.targetAppId, target.page, pageById, target.insertAfter || drag.insertAfter));
+          setHomeAppPages(current => ({
+            ...((current && typeof current === 'object') ? current : {}),
+            ...pageById,
+            [id]: target.page,
+          }));
           setSavedDockIds(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
           setHiddenHomeApps(current => (Array.isArray(current) ? current : []).filter(item => item !== id));
-          setHomeAppPages(current => ({ ...((current && typeof current === 'object') ? current : {}), [id]: drag.targetPage }));
-          setPage(drag.targetPage);
+          setPage(target.page);
         }
         gesture.current = null;
         setDraggingToDock(false);
+        setDraggedAppId(null);
+        setDragPosition(null);
         setEditingHomeScreen(false);
         setContextApp(null);
         appDrag.current = null;
@@ -202,6 +305,8 @@ export function IOSExperience({
         return;
       }
       appDrag.current = null;
+      setDraggedAppId(null);
+      setDragPosition(null);
     }
     if (!iosPrefs.gestures) { gesture.current = null; return; }
     const start = gesture.current;
@@ -293,9 +398,18 @@ export function IOSExperience({
   } as CSSProperties;
 
   return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+(panel==='icon-menu'?'is-editing ':'')+wallpaperClass} style={shellStyle} data-ios-shell="true"
-    onPointerDown={homeGestureStart} onPointerMove={homeGestureMove} onPointerUp={finishHomeGesture} onPointerCancel={() => { gesture.current = null; appDrag.current = null; setDraggingToDock(false); }}
+    onPointerDown={homeGestureStart} onPointerMove={homeGestureMove} onPointerUp={finishHomeGesture} onPointerCancel={() => { gesture.current = null; appDrag.current = null; setDraggingToDock(false); setDraggedAppId(null); setDragPosition(null); }}
     onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current); suppressClickTimer.current = null; } }}>
     <div className="ios-wallpaper-glow" aria-hidden="true"/>
+    {draggedAppId && dragPosition && !activeApp && !locked && (() => {
+      const selected = apps.find(app => app.id === draggedAppId);
+      if (!selected) return null;
+      const DragIcon = selected.Icon;
+      return <div className="ios-drag-ghost" style={{ left: dragPosition.x, top: dragPosition.y }} aria-hidden="true">
+        <span className="ios-icon-art" style={{ '--app-color': selected.color } as CSSProperties}><DragIcon size={24} strokeWidth={1.8}/></span>
+        <span>{selected.title}</span>
+      </div>;
+    })()}
     {(!activeApp || panel==='switcher') && !locked && <div className="ios-status-bar" onPointerDown={statusGestureStart} onPointerUp={statusGestureEnd}>
       <button className="ios-status-clock" title="Open lock screen" onClick={() => { setLocked(true); setPanel(null); }}>{formatClock(clock, false)}</button>
       <div className="ios-status-indicators">
@@ -342,10 +456,10 @@ export function IOSExperience({
           : id === 'storage' ? <button key={id} className="ios-widget ios-widget-storage" onClick={() => launch('settings')}><span className="ios-widget-label"><ShieldCheck size={14}/> Browser storage</span><strong>{localStorageEstimate}</strong><small>Approximate AeroShell settings and text data</small></button>
           : <button key={id} className="ios-widget ios-widget-quick" onClick={() => showPanel('control')}><span className="ios-widget-label"><Sun size={14}/> Quick controls</span><strong>Control Center</strong><small>Brightness, volume and appearance</small></button>)}
       </div>
-      <div className="ios-icon-grid" aria-label="Installed applications">
-        {visibleHomeApps.map(app => {
+      <div className="ios-icon-grid" aria-label="Installed applications" data-page={page}>
+        {visibleHomeItems.map(({ app, page: appPage }) => {
           const Icon = app.Icon;
-          return <button className="ios-app-icon" key={app.id} onClick={() => { if (longPressedRef.current || editingHomeScreen || suppressClick.current) { longPressedRef.current = false; return; } launch(app.id); }}
+          return <button className={'ios-app-icon' + (draggedAppId === app.id ? ' is-being-dragged' : '')} key={app.id} data-ios-app-id={app.id} data-ios-app-page={appPage} onClick={() => { if (longPressedRef.current || editingHomeScreen || suppressClick.current) { longPressedRef.current = false; return; } launch(app.id); }}
             onContextMenu={event => { event.preventDefault(); setContextApp(app.id); setPanel(null); setEditingHomeScreen(true); }}
             onPointerDown={event => holdStart(event, app.id)} onPointerUp={holdEnd} onPointerCancel={holdEnd}
             aria-label={'Open '+app.title} title={app.title}>
