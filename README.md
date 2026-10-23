@@ -157,3 +157,20 @@ New Store apps: World Clock (live city time zones), Typing Sprint (speed and acc
 AeroShell includes a separate browser-based iOS-inspired mobile mode alongside its Windows-style desktop. The mobile Home Screen supports saved wallpaper, configurable local widgets, app pages, an app dock, an app library, simulated Control Center and notifications, a lock screen, and a recent-app switcher. Long-press an app icon to show the top Home Screen editing bar; drag icons to reorder them within a page, move them between pages or into/out of the dock, remove them from the Home Screen, or uninstall optional apps. Swipe horizontally anywhere on the Home Screen to move between pages, and swipe up from the bottom edge of an open app to open the recent-app switcher. Button alternatives remain available for the main actions.
 
 This remains a web simulation, not Apple iOS. Radio, battery and device-status indicators are simulated; browser storage and site permissions remain controlled by the browser.
+
+
+## Master Chat (online multiplayer messaging)
+
+Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. Unlike AeroShell's local desktop profile, messages are stored in a shared online database and can reach users on other devices. This feature remains in a clear not-connected state until a Supabase project is configured.
+
+### One-time service connection
+
+1. Create a Supabase project at https://supabase.com/dashboard.
+2. Open SQL Editor and run the full file supabase/master-chat.sql.
+3. Under Authentication → Sign In / Providers → Email, disable email confirmation for this username-only beta. The login flow maps each username to a non-deliverable app identity; users cannot receive password-reset emails. Before public production, add real email verification/recovery, rate limits, abuse reporting and moderation.
+4. Copy .env.example to .env.local for local development and set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. Add the same two variables to Vercel for Preview and Production, then redeploy.
+5. Share the deployed site. People create separate usernames/passwords, appear in the member list, and can send private real-time messages.
+
+Only use the project's anon/publishable key in VITE_SUPABASE_ANON_KEY. Never put the service-role/secret key in the client bundle. Row-level security allows authenticated users to discover usernames but read/create only messages where they are a participant. Passwords are managed by Supabase Auth, not stored in the app's profile/message tables.
+
+The username-only beta does not provide account recovery, verified identity, blocking/reporting, rate limiting, or moderation tools yet. Deploying code without the Supabase schema and environment variables does not enable network chat.
