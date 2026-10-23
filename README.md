@@ -62,7 +62,7 @@ Visitors only need to open the public website in a modern browser. They do not n
 
 ## Deployment
 
-The application is built as a Vite static site. Vercel should use `npm install` for installation, `npm run build` for the build command, and `dist` as the output directory. The production branch should be `main`. Once this pull request is merged and the repository is connected to Vercel with automatic deployments enabled, updates merged into `main` can deploy automatically.
+The application is built as a Vite static site. Vercel should use `npm install` for installation, `npm run build` for the build command, and `dist` as the output directory. The production branch should be `main`. Connect this repository to Vercel with `main` as the Production Branch and automatic deployments enabled; each successful commit to `main` can then deploy automatically.
 
 ## Data and accounts
 
@@ -135,7 +135,7 @@ The timer's sound alert uses the Web Audio API after the visitor starts the coun
 
 ## Final cross-device pass
 
-The desktop uses viewport-aware window geometry, Pointer Events for drag/resize on mouse, stylus and touch-compatible browsers, installed-app desktop shortcuts, and responsive taskbar/menu layouts for phone portrait/landscape, tablet and laptop/Chromebook sizes. The service-worker cache version is bumped so a new release can replace stale shell assets, and the app checks for a service-worker update on launch.
+The desktop uses viewport-aware window geometry, Pointer Events for drag/resize on mouse, stylus and touch-compatible browsers, installed-app desktop shortcuts, and responsive taskbar/menu layouts for phone portrait/landscape, tablet and laptop/Chromebook sizes. The production build fingerprints the shipped shell assets and generates a matching service-worker cache name, so a content-changing release can replace the prior cache cleanly. The app also checks for a service-worker update on launch.
 
 New Store apps: World Clock (live city time zones), Typing Sprint (speed and accuracy practice), and Password Kit (client-side random password generation using the browser cryptography API). Passwords are generated locally and aren't uploaded or saved by the generator.
 
@@ -154,6 +154,6 @@ New Store apps: World Clock (live city time zones), Typing Sprint (speed and acc
 
 ## iOS-inspired mobile mode
 
-AeroShell includes a separate browser-based iOS-inspired mobile mode alongside its Windows-style desktop. The mobile Home Screen supports saved wallpaper, configurable local widgets, app pages, an app dock, an app library, simulated Control Center and notifications, a lock screen, and a recent-app switcher. Long-press an app icon to show the top Home Screen editing bar; move icons between pages or into/out of the dock, remove them from the Home Screen, or uninstall optional apps. Swipe horizontally anywhere on the Home Screen to move between pages, and swipe up from the bottom edge of an open app to open the recent-app switcher. Button alternatives remain available for the main actions.
+AeroShell includes a separate browser-based iOS-inspired mobile mode alongside its Windows-style desktop. The mobile Home Screen supports saved wallpaper, configurable local widgets, app pages, an app dock, an app library, simulated Control Center and notifications, a lock screen, and a recent-app switcher. Long-press an app icon to show the top Home Screen editing bar; drag icons to reorder them within a page, move them between pages or into/out of the dock, remove them from the Home Screen, or uninstall optional apps. Swipe horizontally anywhere on the Home Screen to move between pages, and swipe up from the bottom edge of an open app to open the recent-app switcher. Button alternatives remain available for the main actions.
 
 This remains a web simulation, not Apple iOS. Radio, battery and device-status indicators are simulated; browser storage and site permissions remain controlled by the browser.
