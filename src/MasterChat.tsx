@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, LockKeyhole, LogIn, MessageCircle, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
-import { getConversationMessages, mergeConversationMessages } from './master-chat-utils';
+import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string };
 type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
@@ -267,7 +267,7 @@ export function MasterChat() {
     const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-' + activePerson.id, { config: { private: true } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const incoming = payload.new as ChatMessage;
-        if (!mounted || !sameConversation(incoming, profile.id, activePerson.id)) return;
+        if (!mounted || !isConversationMessage(incoming, profile.id, activePerson.id)) return;
         setMessages(current => {
           if (current.some(message => message.id === incoming.id)) return current;
           return [...current, incoming].sort((a, b) => a.created_at.localeCompare(b.created_at));
