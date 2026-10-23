@@ -161,19 +161,20 @@ This remains a web simulation, not Apple iOS. Radio, battery and device-status i
 
 ## Master Chat (online multiplayer messaging)
 
-Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. Unlike AeroShell's local desktop profile, messages are stored in a shared online database and can reach users on other devices. This feature remains in a clear not-connected state until a Supabase project is configured.
+Master Chat uses **Supabase Auth, Postgres, row-level security, and Realtime**. Unlike AeroShell's local desktop profile, messages are stored in a shared online database and can reach users on other devices.
 
-### One-time service connection
+The dedicated production backend **windows-12-beta-chat** has been provisioned in Singapore. The Master Chat schema and both migrations are applied, row-level security is enabled, the message table is in the Realtime publication, and the `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` variables are configured on the Vercel **windows-12-beta** project for Production, Preview, and Development. The remaining provider settings below must be set before account signup and private Realtime access will work as intended.
 
-1. Create a Supabase project at https://supabase.com/dashboard.
-2. Open SQL Editor and run the full file supabase/master-chat.sql.
-3. In Supabase Realtime settings, turn off **Allow public access** so the app's private presence and conversation channels are enforced. The schema contains policies for the Master Chat topics.
-4. Under Authentication → Sign In / Providers → Email, disable email confirmation for this username-only beta. The login flow maps each username to a non-deliverable app identity at the reserved .invalid domain; users cannot receive password-reset emails.
-5. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Vercel Project Settings → Environment Variables for Preview and Production, then redeploy. For local development, copy .env.example to .env.local with the same values.
-6. Share the deployed site with a trusted tester. People create separate usernames/passwords, appear in the member list, and can send private real-time messages.
+### Final provider settings (one-time)
+
+1. Open [Master Chat's Realtime settings](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/realtime/settings) and turn off **Allow public access** (private-channel-only authorization). The database already contains the per-channel authorization policies.
+2. Open [Master Chat's Auth providers](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/auth/providers), select the Email provider, and disable **Confirm email** for this username-only beta. Each username maps to a non-deliverable identity at the reserved `.invalid` domain; these accounts cannot receive password-reset emails.
+3. Reload [the live website](https://windows-12-beta.vercel.app/) and create a test account. Ask a trusted tester to create another account on a separate device/browser to verify the directory, private messages, and online presence.
+
+The SQL source is `supabase/master-chat.sql`; versioned migrations live under `supabase/migrations/`. To set up another project, apply the full schema file once, configure the same two Vercel variables, and apply the same Auth and Realtime settings. For local development, copy `.env.example` to `.env.local` and fill in that project's URL and publishable key.
 
 Do not launch this as an open public chat without account recovery, blocking/reporting, abuse controls, rate limits and moderation. Until then, test only with people you know and do not share private personal information in messages.
 
-Only use the project's publishable key in VITE_SUPABASE_PUBLISHABLE_KEY. Never put the service-role/secret key in the client bundle. Row-level security allows authenticated users to discover usernames but read/create only messages where they are a participant. Passwords are managed by Supabase Auth, not stored in the app's profile/message tables.
+Only use the project's publishable key in `VITE_SUPABASE_PUBLISHABLE_KEY`. Never put the service-role/secret key in the client bundle. Row-level security allows authenticated users to discover usernames but read/create only messages where they are a participant. Passwords are managed by Supabase Auth, not stored in the app's profile/message tables.
 
-The username-only beta does not provide account recovery, verified identity, blocking/reporting, rate limiting, or moderation tools yet. Deploying code without the Supabase schema and environment variables does not enable network chat.
+The username-only beta does not provide account recovery, verified identity, blocking/reporting, rate limiting, or moderation tools yet. The production environment is connected, but the two provider settings above are required for the intended username-only signup and private Realtime channels.
