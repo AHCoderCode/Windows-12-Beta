@@ -1369,3 +1369,19 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .master-chat-composer{padding:8px}.master-chat-composer-footer small{font-size:8px}
 }
 @media(prefers-reduced-motion:reduce){.master-chat-spinner{animation:none}}
+
+
+/* Interactive Python stdin and media repeat controls. */
+.python-input-request{display:flex;flex-direction:column;gap:7px;padding:12px;border-top:1px solid var(--border);background:var(--soft)}
+.python-input-request>label{color:var(--text);font:600 11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.python-input-request>div{display:flex;gap:7px;align-items:center}
+.python-input-request input{flex:1;min-width:0;min-height:36px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--solid);color:var(--text);font:12px ui-monospace,SFMono-Regular,Consolas,monospace}
+.python-input-request input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.python-input-request button{flex:0 0 auto;min-height:36px}
+.python-input-request>small{color:var(--muted);font-size:10px}
+.music-repeat-row{display:grid;grid-template-columns:auto minmax(120px,180px);align-items:center;gap:7px 12px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--soft)}
+.music-repeat-row>label{display:flex;align-items:center;gap:7px;color:var(--text);font-size:11px;font-weight:650}
+.music-repeat-row>label svg{color:var(--accent)}
+.music-repeat-row select{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--solid);color:var(--text);font-size:11px}
+.music-repeat-row>small{grid-column:1/-1;color:var(--muted);font-size:10px}
+@media(max-width:490px){.music-repeat-row{grid-template-columns:minmax(0,1fr) minmax(110px,48%);padding-inline:12px}.python-input-request{padding:9px}}
