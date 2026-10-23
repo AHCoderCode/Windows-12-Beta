@@ -1509,3 +1509,17 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   min-width:0;
   min-height:0;
 }
+
+
+/* In true fullscreen, remove the simulated system chrome as well as browser chrome.
+   Escape or Restore exits fullscreen and the desktop/taskbar return automatically. */
+.desktop.fullscreen-window-open .desktop-shortcuts,
+.desktop.fullscreen-window-open .desktop-bottom-actions,
+.desktop.fullscreen-window-open .welcome-chip,
+.desktop.fullscreen-window-open>.taskbar,
+.desktop.fullscreen-window-open>.taskbar-fluid{
+  display:none!important;
+}
+.desktop.fullscreen-window-open .window.maximized{
+  z-index:2147483000!important;
+}
