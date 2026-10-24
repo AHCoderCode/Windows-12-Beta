@@ -2023,19 +2023,16 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       window.clearTimeout(timer);
       timer = window.setTimeout(() => lockAppRef.current(), 5 * 60 * 1000);
     };
-    const lockWhenHidden = () => {
-      if (document.visibilityState === 'hidden') lockAppRef.current();
-    };
+    // Mobile browsers briefly mark the page hidden while opening the system photo/file picker.
+    // Treat that as a normal attachment flow, not as a request to lock the messaging app.
     document.addEventListener('pointerdown', resetTimer, true);
     document.addEventListener('keydown', resetTimer, true);
     document.addEventListener('touchstart', resetTimer, { capture: true, passive: true });
-    document.addEventListener('visibilitychange', lockWhenHidden);
     return () => {
       window.clearTimeout(timer);
       document.removeEventListener('pointerdown', resetTimer, true);
       document.removeEventListener('keydown', resetTimer, true);
       document.removeEventListener('touchstart', resetTimer, true);
-      document.removeEventListener('visibilitychange', lockWhenHidden);
     };
   }, [pinUnlocked, pinRecord]);
 
