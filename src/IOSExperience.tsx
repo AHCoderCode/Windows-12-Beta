@@ -478,8 +478,8 @@ export function IOSExperience({
 
     {activeApp && !locked && <div className="ios-app-topbar">
       <button type="button" className="ios-app-close" onClick={() => { const activeWindow = running.find(win => win.app === activeApp); if (activeWindow) onCloseApp(activeWindow.id, activeWindow.app); else onHome(); }} aria-label={'Close '+(activeAppDef?.title ?? activeApp)} title="Close app"><X size={16}/></button>
-      <span className="ios-app-title">{activeAppDef?.title ?? activeApp}</span>
       <div className="ios-app-top-actions"><button onClick={onHome} aria-label="Minimize app to Home Screen" title="Minimize app"><Home size={16}/> Minimize</button><button onClick={() => showPanel('switcher')} aria-label="Open app switcher"><AppWindow size={16}/> Apps</button></div>
+      <span className="ios-app-title">{activeAppDef?.title ?? activeApp}</span>
     </div>}
 
     {locked && <div className="ios-lock-screen">
