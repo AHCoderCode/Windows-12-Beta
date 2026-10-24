@@ -1752,7 +1752,7 @@ with check (
 );
 
 
--- ===== supabase/migrations/20261024100000_master_chat_group_creation_private_helper.sql =====
+-- ===== supabase/migrations/20261024095547_master_chat_group_creation_private_helper.sql =====
 undefined
 
 -- ===== supabase/migrations/20261024095931_master_chat_attachment_filename_video_guard.sql =====
