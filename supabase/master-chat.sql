@@ -1750,3 +1750,7 @@ with check (
     or (role = 'member' and private.aeroshell_group_is_admin(aeroshell_group_members.group_id, (select auth.uid())))
   )
 );
+
+
+-- ===== supabase/migrations/20261024100000_master_chat_group_creation_private_helper.sql =====
+undefined
