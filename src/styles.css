@@ -1352,21 +1352,24 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .windows7-mode-shell .master-chat-person{color:#203e53}.windows7-mode-shell .master-chat-person.active{background:#d5e9f5;border-color:#aac9dd}
 .windows7-mode-shell .master-chat-bubble{color:#244158;background:#e3eff6;border-color:#c6dae7}.windows7-mode-shell .master-chat-message-row.mine .master-chat-bubble{color:#fff;background:linear-gradient(#5d9fc8,#2e75a7);border-color:#2f74a0}
 @media(max-width:520px){
- .master-chat-app{grid-template-columns:1fr}
- .master-chat-sidebar{grid-row:1;max-height:42%;border-right:0;border-bottom:1px solid var(--border)}
- .master-chat-brand{padding:9px 10px}.master-chat-brand-icon{width:31px;height:31px;flex-basis:31px;border-radius:10px}
- .master-chat-search{margin:7px 9px 4px;height:31px}.master-chat-list-heading{padding:6px 11px}
- .master-chat-people{display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;padding:0 7px 7px;min-height:64px}
- .master-chat-person{width:auto;min-width:122px;max-width:155px;flex:0 0 auto;gap:7px;padding:7px 6px}
- .master-chat-avatar{width:30px;height:30px;flex-basis:30px;font-size:11px}
- .master-chat-person-meta>b{font-size:10px}.master-chat-person-meta>small{font-size:8px}
- .master-chat-empty-people{min-width:100%;padding:8px}
- .master-chat-account{padding:7px 10px}.master-chat-account .master-chat-avatar{width:27px;height:27px;flex-basis:27px}
- .master-chat-main{grid-row:2}
+ .master-chat-app{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+ .master-chat-sidebar{grid-row:1;max-height:none;height:100%;min-height:0;border-right:0;border-bottom:0}
+ .master-chat-brand{padding:10px 12px}.master-chat-brand-icon{width:32px;height:32px;flex-basis:32px;border-radius:10px}
+ .master-chat-search{margin:9px 11px 5px;height:36px}.master-chat-list-heading{padding:8px 13px}
+ .master-chat-people{display:block;flex:1;min-height:0;overflow:auto;padding:0 9px 10px}
+ .master-chat-person{width:100%;min-width:0;max-width:none;display:flex;gap:10px;padding:10px 9px;margin:3px 0}
+ .master-chat-avatar{width:36px;height:36px;flex-basis:36px;font-size:12px}
+ .master-chat-person-meta>b{font-size:12px}.master-chat-person-meta>small{font-size:10px}
+ .master-chat-empty-people{min-width:0;padding:24px 12px}
+ .master-chat-account{padding:10px 12px}.master-chat-account .master-chat-avatar{width:32px;height:32px;flex-basis:32px}
+ .master-chat-main{grid-row:1;display:none}
+ .master-chat-app.master-chat-has-active-person .master-chat-sidebar{display:none}
+ .master-chat-app.master-chat-has-active-person .master-chat-main{display:flex;min-height:0}
  .master-chat-connection{font-size:8px}
- .master-chat-conversation-header{padding:8px 9px;gap:7px}
+ .master-chat-conversation-header{padding:9px 94px 9px 9px;gap:7px}
  .master-chat-messages{padding:12px 9px}.master-chat-message-row{max-width:96%}
- .master-chat-composer{padding:8px}.master-chat-composer-footer small{font-size:8px}
+ .master-chat-composer{padding:8px}.master-chat-composer-footer small{font-size:9px}
+ .master-chat-account-modal,.master-chat-delete-account-modal,.master-chat-pin-modal{padding:20px 16px}
 }
 @media(prefers-reduced-motion:reduce){.master-chat-spinner{animation:none}}
 
@@ -1826,3 +1829,76 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   z-index:12!important;
 }
 .master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-conversation-header{padding-right:94px}
+
+
+/* Master Chat account settings, permanent deletion warnings, and smaller-screen polish. */
+.master-chat-account-actions{display:flex;align-items:center;gap:5px;flex:0 0 auto;margin-left:auto}
+.master-chat-account-actions .master-chat-signout{width:34px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:10px}
+.master-chat-account-actions .master-chat-signout:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--border));color:var(--accent)}
+.master-chat-account-modal-backdrop,.master-chat-delete-account-backdrop{position:absolute;inset:0;display:grid;place-items:center;overflow:auto;padding:14px;background:#07101dc4;backdrop-filter:blur(12px)}
+.master-chat-account-modal-backdrop{z-index:85}
+.master-chat-delete-account-backdrop{z-index:90;background:#10070bd9}
+.master-chat-account-modal,.master-chat-delete-account-modal{position:relative;display:flex;flex-direction:column;gap:15px;width:min(100%,460px);max-height:calc(100% - 8px);overflow:auto;padding:26px;border:1px solid var(--border);border-radius:22px;background:var(--solid);color:var(--text);box-shadow:0 30px 100px #0006}
+.master-chat-account-modal-close{position:absolute;top:13px;right:13px;display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--muted)}
+.master-chat-account-modal-close:hover{color:var(--text);background:var(--soft)}
+.master-chat-account-modal-heading{display:flex;align-items:center;gap:13px;padding-right:30px}
+.master-chat-account-modal-heading>.master-chat-avatar{width:52px;height:52px;flex-basis:52px;font-size:18px}
+.master-chat-account-modal-heading>div{min-width:0}
+.master-chat-account-modal-heading .eyebrow{margin:0 0 5px;color:var(--accent);font-size:9px;font-weight:800;letter-spacing:1.4px}
+.master-chat-account-modal-heading h3,.master-chat-delete-account-modal h3{margin:0;font-size:21px;letter-spacing:-.5px}
+.master-chat-account-modal-heading>div>p:last-child{margin:5px 0 0;color:var(--muted);font-size:11px}
+.master-chat-account-settings-section{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:15px;overflow:hidden}
+.master-chat-account-photo-row,.master-chat-account-setting-row{display:flex;align-items:center;gap:10px;padding:13px;border-bottom:1px solid var(--border);min-width:0}
+.master-chat-account-photo-row:last-child,.master-chat-account-setting-row:last-child{border-bottom:0}
+.master-chat-account-setting-copy{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.master-chat-account-setting-copy>svg{flex:0 0 auto;color:var(--accent)}
+.master-chat-account-setting-copy>span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.master-chat-account-setting-copy b{font-size:11px}
+.master-chat-account-setting-copy small{color:var(--muted);font-size:10px;line-height:1.5}
+.master-chat-account-action,.master-chat-account-photo-pick{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;min-height:32px;padding:0 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:10px;font-weight:750;white-space:nowrap}
+.master-chat-account-action:hover,.master-chat-account-photo-pick:hover{background:var(--soft);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.master-chat-account-action:disabled,.master-chat-account-remove-photo:disabled{opacity:.45;cursor:not-allowed}
+.master-chat-account-photo-pick{position:relative;overflow:hidden;cursor:pointer}
+.master-chat-account-photo-pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.master-chat-account-photo-pick.busy{opacity:.55;pointer-events:none}
+.master-chat-account-remove-photo{display:grid;place-items:center;flex:0 0 auto;width:32px;height:32px;border:1px solid #e4546445;border-radius:9px;background:#e4546410;color:#dc5366}
+.master-chat-account-modal-actions{display:flex;gap:9px}
+.master-chat-account-signout,.master-chat-account-delete{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;min-height:42px;padding:0 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-size:11px;font-weight:750}
+.master-chat-account-signout:hover{background:var(--soft)}
+.master-chat-account-delete{border-color:#e4546445;background:#e454640c;color:#d94e63}
+.master-chat-account-delete svg:last-child{margin-left:auto}
+.master-chat-account-delete:hover{background:#e4546419;border-color:#e4546480}
+.master-chat-account-modal-note{display:flex;align-items:flex-start;gap:7px;margin:0;color:var(--muted);font-size:10px;line-height:1.6}
+.master-chat-account-modal-note svg{flex:0 0 auto;color:var(--accent);margin-top:1px}
+.master-chat-delete-account-modal{width:min(100%,470px);gap:13px}
+.master-chat-delete-account-icon{display:grid;place-items:center;width:49px;height:49px;border:1px solid #e4546455;border-radius:16px;background:#e4546412;color:#e05267}
+.master-chat-delete-account-modal>.eyebrow{margin:0;color:#db566b;font-size:9px;font-weight:850;letter-spacing:1.3px}
+.master-chat-delete-account-intro{margin:0;color:var(--muted);font-size:11px;line-height:1.7}
+.master-chat-delete-account-intro b{color:var(--text)}
+.master-chat-delete-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:13px 13px 13px 28px;border:1px solid #e4546438;border-radius:12px;background:#e4546409;color:var(--text);font-size:11px;line-height:1.65}
+.master-chat-delete-list li::marker{color:#dc5366}
+.master-chat-delete-scope,.master-chat-delete-final-note{margin:0;color:var(--muted);font-size:10px;line-height:1.65}
+.master-chat-delete-confirm-label{display:flex;flex-direction:column;gap:7px;color:var(--text);font-size:11px;font-weight:750}
+.master-chat-delete-confirm-label code{font-size:11px;background:#e4546412;color:#dc5366;padding:2px 5px;border-radius:4px}
+.master-chat-delete-confirm-label input{height:42px;min-width:0;padding:0 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;letter-spacing:1px;outline:none}
+.master-chat-delete-confirm-label input:focus{border-color:#e45464;box-shadow:0 0 0 3px #e4546417}
+.master-chat-delete-actions{display:flex;align-items:stretch;gap:9px}
+.master-chat-delete-actions button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:41px;flex:1 1 0;padding:8px 10px;border-radius:10px;font-size:10px;font-weight:800}
+.master-chat-delete-cancel{border:1px solid var(--border);background:var(--surface);color:var(--text)}
+.master-chat-delete-cancel:hover{background:var(--soft)}
+.master-chat-account-delete-primary{border:1px solid #cf3d55;background:linear-gradient(120deg,#d84d64,#b82f4a);color:#fff;box-shadow:0 5px 16px #d8445e25}
+.master-chat-account-delete-primary:hover:not(:disabled){filter:brightness(1.06)}
+.master-chat-account-delete-primary:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+.master-chat-delete-final-note{text-align:center;color:#d85a6e}
+.master-chat-delete-account-modal .master-chat-notice{margin:0}
+.master-chat-app button:focus-visible,.master-chat-app input:focus-visible,.master-chat-app textarea:focus-visible,.master-chat-account-modal button:focus-visible,.master-chat-delete-account-modal button:focus-visible,.master-chat-delete-account-modal input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.windows7-mode-shell .master-chat-account-modal,.windows7-mode-shell .master-chat-delete-account-modal{border-color:#b5d0df;background:linear-gradient(#fff,#f2f9fd)}
+@media(max-width:520px){
+ .master-chat-account-modal-backdrop,.master-chat-delete-account-backdrop{padding:8px}
+ .master-chat-account-modal,.master-chat-delete-account-modal{padding:22px 14px 16px;border-radius:18px}
+ .master-chat-account-modal-actions{flex-direction:column}
+ .master-chat-delete-actions{flex-direction:column-reverse}
+ .master-chat-account-setting-row,.master-chat-account-photo-row{padding:10px;gap:7px}
+ .master-chat-account-action,.master-chat-account-photo-pick{padding:0 8px}
+}
+@media(prefers-reduced-motion:reduce){.master-chat-account-modal-backdrop,.master-chat-delete-account-backdrop{backdrop-filter:none}}
