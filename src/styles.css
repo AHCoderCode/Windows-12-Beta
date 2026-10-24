@@ -1997,3 +1997,21 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .master-chat-attachment-card{max-width:78vw}
 }
 @media(prefers-reduced-motion:reduce){.master-chat-recording-indicator i{animation:none}}
+
+/* Scheduled message dialog */
+.master-chat-schedule-modal{width:min(540px,calc(100vw - 28px));max-height:min(88dvh,820px);overflow:auto;overscroll-behavior:contain}
+.master-chat-schedule-modal>label{display:flex;flex-direction:column;gap:7px;margin:14px 0;font-size:12px;font-weight:600}
+.master-chat-schedule-modal input[type=datetime-local]{width:100%;min-width:0;min-height:42px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--solid);color:var(--text)}
+.master-chat-scheduled-preview{padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--soft);margin:12px 0}
+.master-chat-scheduled-preview>small,.master-chat-scheduled-item small{display:block;font-size:10px;color:var(--muted);margin-bottom:6px}
+.master-chat-scheduled-preview p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+.master-chat-scheduled-list{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:14px;margin-top:15px}
+.master-chat-scheduled-list>b{font-size:12px}
+.master-chat-scheduled-list>small{font-size:11px;color:var(--muted)}
+.master-chat-scheduled-item{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--soft)}
+.master-chat-scheduled-item>span{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.master-chat-scheduled-item>span>span{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+.master-chat-scheduled-cancel{flex-shrink:0;border:1px solid var(--border);border-radius:7px;padding:6px 9px;background:transparent;color:var(--text);font-size:11px}
+.master-chat-scheduled-cancel:hover{border-color:#f08e9a;color:#ffabb4}
+@media(max-width:520px){.master-chat-schedule-modal{padding:18px}.master-chat-schedule-modal .master-chat-feature-modal-actions{flex-wrap:wrap}.master-chat-scheduled-item{align-items:flex-start}}
+
