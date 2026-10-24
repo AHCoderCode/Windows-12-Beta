@@ -912,7 +912,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         {pinChangeError && <p className="master-chat-notice error" role="alert">{pinChangeError}</p>}
         <div className="master-chat-pin-modal-actions"><button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':pinRecord?'Change PIN':'Set PIN'}</button><button type="button" className="secondary-button" onClick={()=>setPinChangeOpen(false)}>Cancel</button></div>
-        {pinRecord && <button type="button" className="danger-button" disabled={pinChangeBusy} onClick={()=>void removeLocalPin()}>Remove PIN</button>
+        {pinRecord && <button type="button" className="danger-button" disabled={pinChangeBusy} onClick={()=>void removeLocalPin()}>Remove PIN</button>}
       </form>
     </div>}
   </section>;
