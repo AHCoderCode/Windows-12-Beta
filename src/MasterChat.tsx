@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, ImagePlus, LockKeyhole, LogIn, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
@@ -91,9 +92,9 @@ const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 
-function MasterChatExitButton({ onClose, className = 'master-chat-close-app' }: { onClose?: () => void; className?: string }) {
+function MasterChatExitButton({ onClose, className = 'master-chat-close-app', portalTarget }: { onClose?: () => void; className?: string; portalTarget?: HTMLElement | null }) {
   if (!onClose) return null;
-  return <button type="button" className={className} title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>;
+  return createPortal(<button type="button" className={className} title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>, portalTarget ?? document.body);
 }
 
 export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }: { iosMode?: boolean; showCallLauncher?: boolean; onClose?: () => void } = {}) {
@@ -862,8 +863,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher}/>
-    {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close"/></>}
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
+    {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/></>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
