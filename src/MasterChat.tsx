@@ -11,6 +11,7 @@ type MessageType = 'text' | 'file' | 'voice';
 type ScheduledChatMessage = { id: string; user_id: string; recipient_id: string | null; group_id: string | null; body: string; send_at: string };
 const SCHEDULED_CHAT_MESSAGES_KEY = 'aeroshell.master-chat.scheduled-messages.v1';
 const scheduledWorkerInFlight = new Set<string>();
+const scheduledWorkerRetryAt = new Map<string, number>();
 
 function readScheduledChatMessages(): ScheduledChatMessage[] {
   try {
@@ -207,7 +208,7 @@ export async function processMasterChatScheduledMessages() {
   if (!userId) return;
   const due = readScheduledChatMessages().filter(item => item.user_id === userId && Date.parse(item.send_at) <= Date.now());
   for (const item of due) {
-    if (scheduledWorkerInFlight.has(item.id)) continue;
+    if (scheduledWorkerInFlight.has(item.id) || (scheduledWorkerRetryAt.get(item.id) ?? 0) > Date.now()) continue;
     scheduledWorkerInFlight.add(item.id);
     try {
       const { data, error } = await supabaseClient.from('aeroshell_messages').insert({
@@ -218,11 +219,13 @@ export async function processMasterChatScheduledMessages() {
         message_type: 'text',
       }).select('id').single();
       if (error || !data) throw error ?? new Error('The message was not saved by the server.');
+      scheduledWorkerRetryAt.delete(item.id);
       const remaining = readScheduledChatMessages().filter(queued => queued.id !== item.id);
       writeScheduledChatMessages(remaining);
       window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-sent', { detail: { id: item.id, user_id: item.user_id } }));
     } catch {
-      window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-failed', { detail: { id: item.id, user_id: item.user_id, message: 'A scheduled message could not send. It remains queued and will be retried while AeroShell is open and you are signed in.' } }));
+      scheduledWorkerRetryAt.set(item.id, Date.now() + 60000);
+      window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-failed', { detail: { id: item.id, user_id: item.user_id, message: 'A scheduled message could not send. It remains queued and will be retried shortly while AeroShell is open and you are signed in.' } }));
     } finally {
       scheduledWorkerInFlight.delete(item.id);
     }
