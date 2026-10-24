@@ -181,13 +181,13 @@ Master Chat uses **Supabase Auth, Postgres row-level security (RLS), and Realtim
 
 ### Enable relay-only voice calls
 
-The Supabase Edge Function `master-chat-turn-credentials` is deployed with JWT verification enabled, and issues short-lived TURN credentials only for an authenticated participant in an active call. It **fails closed** until you configure the provider secrets—no direct-network fallback is enabled.
+The active Supabase Edge Function `master-chat-turn-credentials` uses **Metered TURN**. It validates the supplied Supabase bearer token in function code with `supabase.auth.getUser(token)`, checks that the authenticated user is a participant in a ringing or accepted call, applies a server-side request quota, and returns allowlisted TURN relay URLs. The Supabase platform-level `verify_jwt` switch is currently **off**; authentication is checked explicitly by the function itself. Do not change this switch without reviewing the function's JWT validation strategy and Supabase signing-key configuration.
 
-1. Create a Cloudflare Realtime TURN key and its API token in your own Cloudflare account. Follow [Cloudflare's credential-generation guide](https://developers.cloudflare.com/realtime/turn/generate-credentials/). Keep these values secret; do not paste them into chat or commit them to GitHub.
-2. In [Supabase Edge Function Secrets](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/functions/secrets), set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN`. Keep them server-side; never add them to a `VITE_*` variable or browser bundle.
-3. Reopen the website and test a call between two accounts. If these secrets are absent, a call should display a configuration error and must not try a direct peer connection.
+The function is designed to **fail closed**: it returns a configuration/relay error when the TURN provider is unavailable, and the client must not fall back to direct peer candidates.
 
-**Potential usage cost:** Cloudflare documents a 1,000 GB monthly shared free tier and $0.05 per GB of outbound TURN data after that allowance when using TURN without its Realtime SFU. Confirm the current plan and usage in your Cloudflare account before allowing regular calls: [Cloudflare TURN pricing](https://developers.cloudflare.com/realtime/turn/faq/).
+1. In [Supabase Edge Function Secrets](https://supabase.com/dashboard/project/qoyqfmovzvtyvxutakym/functions/secrets), configure `METERED_TURN_DOMAIN` using the Metered-assigned domain ending in `.metered.live` and `METERED_TURN_API_KEY` using the secret API key. These values must remain server-side; never put them in a `VITE_*` variable, frontend code, a screenshot, or a public repository.
+2. Test a call between two separate signed-in accounts and browsers/devices: outgoing call, accept, reject, hang up, reconnect, and the missing-provider error path. If relay configuration is unavailable, the call must fail clearly rather than trying a direct connection.
+3. Review Metered's current plan limits and pricing in your own provider account before opening this feature to regular use; pricing and quotas can change.
 
 ### SQL, keys, and data access
 
