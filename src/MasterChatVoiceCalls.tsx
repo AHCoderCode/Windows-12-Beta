@@ -120,21 +120,26 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         } catch { /* Some gateway errors do not return JSON. */ }
       }
       if (serviceCode === 'private_relay_not_configured') {
-        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure CLOUDFLARE_TURN_KEY_ID and CLOUDFLARE_TURN_API_TOKEN in the Supabase Edge Function secrets.');
+        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure METERED_TURN_DOMAIN and METERED_TURN_API_KEY in the Supabase Edge Function secrets.');
       }
       if (serviceCode === 'private_relay_unavailable' || serviceCode === 'backend_configuration_unavailable' || httpStatus === 503 || httpStatus === 502) {
-        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Cloudflare TURN credentials.');
+        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Metered TURN credential.');
       }
       throw new Error('Could not prepare the secure voice relay. No call was connected. Please try again after the server relay issue is fixed.');
     }
-    const servers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
-    const turnServers = servers.filter(server => {
-      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-      return typeof server.username === 'string' && typeof server.credential === 'string'
-        && urls.some(url => typeof url === 'string' && /^turns?:turn\.cloudflare\.com:/i.test(url));
+    const returnedServers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
+    const turnServers: RTCIceServer[] = returnedServers.flatMap(server => {
+      const allUrls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      const urls = allUrls.filter((url): url is string =>
+        typeof url === 'string'
+        && /^turns?:[a-z0-9.-]+\\.relay\\.metered\\.ca:\\d+(?:\\?transport=(?:tcp|udp))?$/i.test(url.trim()),
+      );
+      if (!urls.length || typeof server.username !== 'string' || !server.username.trim()
+        || typeof server.credential !== 'string' || !server.credential.trim()) return [];
+      return [{ urls: urls.length === 1 ? urls[0] : urls, username: server.username, credential: server.credential }];
     });
     if (!turnServers.length) {
-      throw new Error('Private relay credentials were not returned. Direct connections are blocked for privacy, so this call cannot start.');
+      throw new Error('The free relay did not return valid TURN credentials. Direct connections remain blocked for privacy. Verify the Metered credential, wait up to two minutes after creating it, then retry.');
     }
     return turnServers;
   }, [client]);
