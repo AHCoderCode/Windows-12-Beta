@@ -1264,6 +1264,57 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinNewConfirmValue('');
   };
 
+  const openAccountPasswordSettings = () => {
+    setAccountSettingsOpen(false);
+    setAccountPasswordError('');
+    setAccountCurrentPassword('');
+    setAccountNewPassword('');
+    setAccountConfirmPassword('');
+    setPasswordChangeOpen(true);
+  };
+
+  const changeAccountPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!supabaseClient || !profile || accountPasswordBusy) return;
+    setAccountPasswordError('');
+    if (accountCurrentPassword.length < 8) {
+      setAccountPasswordError('Enter your current account password.');
+      return;
+    }
+    if (accountNewPassword.length < 8) {
+      setAccountPasswordError('Choose a new password with at least 8 characters.');
+      return;
+    }
+    if (accountNewPassword !== accountConfirmPassword) {
+      setAccountPasswordError('The new passwords do not match.');
+      return;
+    }
+    if (accountCurrentPassword === accountNewPassword) {
+      setAccountPasswordError('Choose a new password different from the current password.');
+      return;
+    }
+    setAccountPasswordBusy(true);
+    try {
+      const { error: reauthError } = await supabaseClient.auth.signInWithPassword({
+        email: usernameEmail(profile.username),
+        password: accountCurrentPassword,
+      });
+      if (reauthError) throw new Error('The current account password is incorrect.');
+      const { error } = await supabaseClient.auth.updateUser({ password: accountNewPassword });
+      if (error) throw new Error('The password could not be changed. Please retry.');
+      setPasswordChangeOpen(false);
+      setAccountCurrentPassword('');
+      setAccountNewPassword('');
+      setAccountConfirmPassword('');
+      setPassword('');
+      tell('Your Master Chat system/account password has been changed.', 'success');
+    } catch (error) {
+      setAccountPasswordError(error instanceof Error ? error.message : 'Could not change the account password.');
+    } finally {
+      setAccountPasswordBusy(false);
+    }
+  };
+
   const openDeleteAccount = () => {
     setAccountSettingsOpen(false);
     setDeleteAccountStep(1);
@@ -1319,7 +1370,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setSession(null);
       setProfile(null);
       setPeople([]);
+      setGroups([]);
+      setGroupMembers([]);
       setActivePerson(null);
+      setActiveGroup(null);
       setMessages([]);
       setDraft('');
       setPeopleQuery('');
@@ -1333,6 +1387,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setConversationFullscreen(false);
       setAccountSettingsOpen(false);
       setPinChangeOpen(false);
+      setPasswordChangeOpen(false);
+      setGroupDialogOpen(false);
       setDeleteAccountStep(0);
       setDeleteAccountText('');
       setNotice('Your Master Chat account and its chat data have been permanently deleted. You can create a new account now.');
@@ -1353,7 +1409,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }
       return;
     }
-    if (!iosMode || !activePerson) return;
+    if (!iosMode || (!activePerson && !activeGroup)) return;
     setConversationFullscreen(true);
     const element = chatRootRef.current as (HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }) | null;
     if (!element) return;
@@ -1398,7 +1454,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       nativeChatFullscreenRef.current = false;
       void document.exitFullscreen().catch(() => undefined);
     }
-  }, [iosMode, activePerson, pinUnlocked]);
+  }, [iosMode, activePerson, activeGroup, pinUnlocked]);
 
   const lockApp = () => {
     if (!pinRecord) {
@@ -1411,9 +1467,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinInput('');
     setPinConfirm('');
     setActivePerson(null);
+    setActiveGroup(null);
+    setGroupMembers([]);
     setMessages([]);
     setDraft('');
     setPinChangeOpen(false);
+    setGroupDialogOpen(false);
   };
   lockAppRef.current = lockApp;
 
@@ -1456,6 +1515,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     if (error) tell('Could not sign out. Please try again.', 'error');
     else {
       setActivePerson(null);
+      setActiveGroup(null);
+      setGroupMembers([]);
+      setGroups([]);
       setMessages([]);
       setPassword('');
       tell('You have signed out.', 'success');
