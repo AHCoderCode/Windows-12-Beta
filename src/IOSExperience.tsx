@@ -569,33 +569,11 @@ type IOSSettingsProps = {
   onLaunchApp: (id: string) => void;
   onUninstallApp: (id: string) => void;
   onResetSettings: () => void;
-  accountPinEnabled: boolean;
-  accountPasswordEnabled: boolean;
-  onSavePin: (pin: string) => Promise<void>;
-  onRemovePin: () => void;
-  onLock: () => void;
 };
 
-export function IOSSettingsApp({apps, installed, mode, iosPrefs, sharedPrefs, onUpdateIOSPrefs, onUpdateSharedPrefs, onSwitchMode, onLaunchApp, onUninstallApp, onResetSettings, accountPinEnabled, accountPasswordEnabled, onSavePin, onRemovePin, onLock}: IOSSettingsProps) {
+export function IOSSettingsApp({apps, installed, mode, iosPrefs, sharedPrefs, onUpdateIOSPrefs, onUpdateSharedPrefs, onSwitchMode, onLaunchApp, onUninstallApp, onResetSettings}: IOSSettingsProps) {
   const [storage,setStorage] = useState<{usage?:number;quota?:number}|null>(null);
   const [storageError,setStorageError] = useState('');
-  const [newPin,setNewPin] = useState('');
-  const [confirmPin,setConfirmPin] = useState('');
-  const [pinStatus,setPinStatus] = useState('');
-  const [pinBusy,setPinBusy] = useState(false);
-  const submitPin = async () => {
-    if (!/^\d{4}$/.test(newPin)) { setPinStatus('Enter exactly four digits.'); return; }
-    if (newPin !== confirmPin) { setPinStatus('The PINs do not match.'); return; }
-    setPinBusy(true);
-    try {
-      await onSavePin(newPin);
-      setNewPin('');
-      setConfirmPin('');
-      setPinStatus('Desktop PIN enabled. It is optional and stored in this browser.');
-    } catch (error) {
-      setPinStatus(error instanceof Error ? error.message : 'Could not save the PIN.');
-    } finally { setPinBusy(false); }
-  };
   useEffect(() => {
     let live = true;
     const storageApi = navigator.storage as StorageManager & { estimate?: () => Promise<StorageEstimate> };
@@ -611,7 +589,6 @@ export function IOSSettingsApp({apps, installed, mode, iosPrefs, sharedPrefs, on
     <section className="ios-settings-group"><h3>Appearance and accessibility</h3><label className="ios-setting-row"><span><b>Theme</b><small>Change the simulated interface appearance</small></span><select value={sharedPrefs.theme} onChange={event=>onUpdateSharedPrefs({theme:event.target.value as IOSSharedPrefs['theme']})}><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select></label><label className="ios-setting-row"><span><b>Accent color</b><small>Shared highlight color</small></span><input type="color" value={sharedPrefs.accent} onChange={event=>onUpdateSharedPrefs({accent:event.target.value})}/></label><label className="ios-setting-row"><span><b>Reduce motion</b><small>Respect a lower-motion preference</small></span><input type="checkbox" checked={!sharedPrefs.motion} onChange={event=>onUpdateSharedPrefs({motion:!event.target.checked})}/></label><label className="ios-setting-row"><span><b>Show battery percentage</b><small>Simulated battery indicator</small></span><input type="checkbox" checked={iosPrefs.showBatteryPercent} onChange={event=>onUpdateIOSPrefs({showBatteryPercent:event.target.checked})}/></label><label className="ios-setting-row"><span><b>Touch gestures</b><small>Enable swipe shortcuts; buttons remain available</small></span><input type="checkbox" checked={iosPrefs.gestures} onChange={event=>onUpdateIOSPrefs({gestures:event.target.checked})}/></label></section>
     <section className="ios-settings-group"><h3>Sounds and notifications</h3><label className="ios-setting-row"><span><b>Media volume</b><small>Changes AeroShell players, not device volume</small></span><strong>{sharedPrefs.volume}%</strong></label><input className="ios-settings-range" type="range" min="0" max="100" value={sharedPrefs.volume} onChange={event=>onUpdateSharedPrefs({volume:Number(event.target.value)})}/><label className="ios-setting-row"><span><b>Notifications</b><small>Simulated AeroShell notifications</small></span><input type="checkbox" checked={iosPrefs.notifications} onChange={event=>onUpdateIOSPrefs({notifications:event.target.checked})}/></label><label className="ios-setting-row"><span><b>Do Not Disturb</b><small>Mute the notification panel</small></span><input type="checkbox" checked={iosPrefs.doNotDisturb} onChange={event=>onUpdateIOSPrefs({doNotDisturb:event.target.checked})}/></label></section>
     <section className="ios-settings-group"><h3>Applications</h3><div className="ios-settings-stat"><b>{installed.length}</b><span>Installed AeroShell apps</span><button onClick={()=>onLaunchApp('store')}>Manage in Store</button></div><div className="ios-managed-apps">{installed.filter(id=>id!=='store').map(id=>{const app=apps.find(item=>item.id===id);if(!app)return null;const Icon=app.Icon;return <div key={id} className="ios-managed-app"><span className="ios-icon-art" style={{'--app-color':app.color} as CSSProperties}><Icon size={18}/></span><span><b>{app.title}</b><small>{normalizeAppCategory(app.id,app.category)}</small></span>{!app.defaultInstalled&&<button onClick={()=>onUninstallApp(id)}>Uninstall</button>}</div>;})}</div></section>
-    <section className="ios-settings-group"><h3>Optional desktop PIN</h3><p>Protect the AeroShell browser profile with a four-digit PIN instead of a password. This is optional, is not synced, and does not lock your actual device.</p>{accountPinEnabled?<><div className="ios-lock-pin-status"><span><ShieldCheck size={17}/><b>Desktop PIN protection is on</b></span><button className="ios-secondary-action" onClick={onLock}>Lock now</button><button className="ios-danger-action" onClick={()=>{if(confirm('Remove the optional desktop PIN?')){onRemovePin();setPinStatus('Desktop PIN removed.');}}}>Remove PIN</button></div></>:<><label className="ios-lock-pin-field"><span>New four-digit PIN</span><input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4}" maxLength={4} value={newPin} onChange={event=>setNewPin(event.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Four digits"/></label><label className="ios-lock-pin-field"><span>Confirm PIN</span><input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4}" maxLength={4} value={confirmPin} onChange={event=>setConfirmPin(event.target.value.replace(/\D/g,'').slice(0,4))} placeholder="Type it again"/></label><button className="ios-secondary-action ios-lock-pin-save" disabled={pinBusy} onClick={()=>void submitPin()}>{pinBusy?'Saving…':accountPasswordEnabled?'Replace password with PIN':'Enable optional PIN'}</button></>}{pinStatus&&<p className="ios-lock-pin-status-message" role="status">{pinStatus}</p>}</section>
     <section className="ios-settings-group"><h3>Browser storage</h3><div className="ios-storage-grid"><div><small>Used by this site</small><b>{storage?formatBytes(storage.usage):'Not reported'}</b></div><div><small>Quota reported</small><b>{storage?formatBytes(storage.quota):'Not reported'}</b></div></div><p>{storageError||'Values are estimates provided by the browser and may be shared across site features.'}</p></section>
     <section className="ios-settings-group"><h3>Recovery</h3><p>Reset mobile-mode appearance and interaction preferences. Documents, drawings, app installation state and game scores are retained.</p><button className="ios-reset-settings" onClick={onResetSettings}><RotateCcw size={15}/> Reset iOS settings</button></section>
     <p className="ios-settings-footnote"><ShieldCheck size={14}/> iOS 27 is a visual simulation inside AeroShell. It does not install iOS or control real system radios, brightness, notifications or device settings.</p>
