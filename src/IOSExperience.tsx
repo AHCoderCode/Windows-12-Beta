@@ -397,7 +397,7 @@ export function IOSExperience({
     backgroundImage: iosPrefs.wallpaper === 'custom' && iosPrefs.customWallpaper ? 'linear-gradient(#07101f22,#07101f44),url("' + iosPrefs.customWallpaper + '")' : undefined,
   } as CSSProperties;
 
-  return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(locked ? 'is-locked ' : '')+(panel==='icon-menu'?'is-editing ':'')+wallpaperClass} style={shellStyle} data-ios-shell="true"
+  return <div className={'ios-shell '+(activeApp ? 'is-app-active ' : '')+(activeApp === 'master-chat' ? 'has-master-chat-app ' : '')+(locked ? 'is-locked ' : '')+(panel==='icon-menu'?'is-editing ':'')+wallpaperClass} style={shellStyle} data-ios-shell="true"
     onPointerDown={homeGestureStart} onPointerMove={homeGestureMove} onPointerUp={finishHomeGesture} onPointerCancel={() => { gesture.current = null; appDrag.current = null; setDraggingToDock(false); setDraggedAppId(null); setDragPosition(null); }}
     onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; if (suppressClickTimer.current !== null) window.clearTimeout(suppressClickTimer.current); suppressClickTimer.current = null; } }}>
     <div className="ios-wallpaper-glow" aria-hidden="true"/>
@@ -477,8 +477,9 @@ export function IOSExperience({
     </main>}
 
     {activeApp && !locked && <div className="ios-app-topbar">
+      <button type="button" className="ios-app-close" onClick={() => { const activeWindow = running.find(win => win.app === activeApp); if (activeWindow) onCloseApp(activeWindow.id, activeWindow.app); else onHome(); }} aria-label={'Close '+(activeAppDef?.title ?? activeApp)} title="Close app"><X size={16}/></button>
       <span className="ios-app-title">{activeAppDef?.title ?? activeApp}</span>
-      <div className="ios-app-top-actions"><button onClick={onHome} aria-label="Return to home screen"><Home size={16}/> Home</button><button onClick={() => showPanel('switcher')} aria-label="Open app switcher"><AppWindow size={16}/> Apps</button></div>
+      <div className="ios-app-top-actions"><button onClick={onHome} aria-label="Minimize app to Home Screen" title="Minimize app"><Home size={16}/> Minimize</button><button onClick={() => showPanel('switcher')} aria-label="Open app switcher"><AppWindow size={16}/> Apps</button></div>
     </div>}
 
     {locked && <div className="ios-lock-screen">

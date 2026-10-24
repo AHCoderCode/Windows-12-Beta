@@ -121,7 +121,7 @@ async function compressImageForGroup(file: File) {
 }
 type AuthMode = 'signin' | 'signup';
 type PinRecord = { version: 1; salt: string; verifier: string };
-type LocalPasskeyRecord = { version: 1; credentialId: string; publicKey: string; rpId: string; userId: string; algorithm: -7; signCount: number; createdAt: string };
+type LocalPasskeyRecord = { version: 1; credentialId: string; publicKey: string; rpId: string; userId: string; method?: 'face' | 'fingerprint'; algorithm: -7; signCount: number; createdAt: string };
 const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
 const PIN_THROTTLE_KEY = 'aeroshell.master-chat.pin-throttle.v1';
 const LOCAL_PASSKEY_STORAGE_KEY = 'aeroshell.master-chat.passkey.v1';
@@ -1656,7 +1656,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinNewConfirmValue('');
   };
 
-  const saveLocalPasskey = async () => {
+  const saveLocalPasskey = async (method: 'face' | 'fingerprint') => {
     if (!profile || passkeyBusy) return;
     setPasskeyBusy(true);
     setPasskeyError('');
@@ -1700,6 +1700,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         publicKey: passkeyToBase64Url(publicKey),
         rpId: window.location.hostname,
         userId: profile.id,
+        method,
         algorithm: -7,
         signCount: 0,
         createdAt: new Date().toISOString(),
@@ -1707,7 +1708,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.setItem(LOCAL_PASSKEY_STORAGE_KEY, JSON.stringify(record));
       setLocalPasskey(record);
       setPasskeyError('');
-      tell('Biometric passkey is ready. Your device will request Face ID, fingerprint, Windows Hello, or its supported secure screen-lock verification when you unlock.', 'success');
+      tell(`${method === 'face' ? 'Face ID' : 'Fingerprint'} passkey created. Your browser and device still choose which built-in authenticator verifies the passkey, including any configured screen-lock fallback.`, 'success');
     } catch (error) {
       setPasskeyError(error instanceof Error ? error.message : 'Could not set up a passkey on this device.');
     } finally {
@@ -2096,7 +2097,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         </>}
         {pinError && <p className="master-chat-notice error" role="alert">{pinError}</p>}
         {!isRepair && !passkeyOnlyLock && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages'}</button>}
-        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithLocalPasskey()}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying…' : 'Use Face ID / fingerprint'}</button>}
+        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithLocalPasskey()}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying…' : localPasskey.method === 'face' ? 'Use Face ID passkey' : localPasskey.method === 'fingerprint' ? 'Use fingerprint passkey' : 'Use device passkey'}</button>}
         {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
         <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
       </form>
@@ -2149,8 +2150,13 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
-    {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/></>}
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
+    {conversationFullscreen && <>
+       {iosMode
+         ? createPortal(<button type="button" className="master-chat-fullscreen-exit master-chat-ios-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>, document.body)
+         : <button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>}
+       {!iosMode && <MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/>}
+     </>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
@@ -2202,7 +2208,6 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           {activeGroup && <button type="button" className="master-chat-group-info-button" title="Group info and members" aria-label="Group info and members" onClick={openGroupManagement}><Users size={17}/><span>Group info</span></button>}
           {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
         </header>
-        {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Messages and attachments are restricted by account and group membership policies, but they are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
@@ -2284,10 +2289,16 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-account-setting-copy"><ShieldCheck size={18}/><span><b>Optional app PIN</b><small>{pinRecord?'PIN protection is enabled in this browser.':'No PIN is set. Master Chat remains available without one.'}</small></span></div>
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
-          <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Face ID / fingerprint</b><small>{localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? 'Biometric passkey ready on this browser.' : 'Set up your device’s built-in biometric passkey.'}</small></span></div>
-            <button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');if(localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname)removeLocalPasskey();else void saveLocalPasskey();}}>{passkeyBusy?'Working…':localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname?'Remove':'Set up'} <ChevronRight size={15}/></button>
-          </div>
+          {localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? <div className="master-chat-account-setting-row">
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>{localPasskey.method === 'face' ? 'Face ID passkey saved' : localPasskey.method === 'fingerprint' ? 'Fingerprint passkey saved' : 'Device passkey saved'}</b><small>Saved in this browser for your account. Your device may still present its configured system verification method.</small></span></div>
+            <button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={removeLocalPasskey}>Remove <ChevronRight size={15}/></button>
+          </div> : <div className="master-chat-account-setting-row master-chat-passkey-row">
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Create a biometric passkey</b><small>Choose a preferred method. The operating system controls which biometric is available.</small></span></div>
+            <div className="master-chat-passkey-actions">
+              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');void saveLocalPasskey('face');}}><ShieldCheck size={15}/>{passkeyBusy?'Working…':'Face ID'}</button>
+              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');void saveLocalPasskey('fingerprint');}}><Fingerprint size={15}/>{passkeyBusy?'Working…':'Fingerprint'}</button>
+            </div>
+          </div>}
           {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
           <div className="master-chat-account-setting-row">
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord ? 'Lock now; use your PIN or configured passkey to return.' : localPasskey && localPasskey.rpId===window.location.hostname ? 'Lock now; use your device passkey to return.' : 'Set up an optional PIN or passkey to enable the app lock.'}</small></span></div>
@@ -2302,7 +2313,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
-        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN and biometric passkey are local unlock methods for this browser; neither replaces your Master Chat account password or encrypts chat messages. Face ID or fingerprint availability is controlled by your device, and removing the site link does not delete credentials from its passkey manager.</p>
+        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN and passkey are local unlock methods for this browser; neither replaces your account password nor encrypts messages. Face ID and fingerprint are separate preferred setup labels, but websites cannot force the device to use a specific biometric or block its secure screen-lock fallback. If the device offers only a pattern/PIN and you do not want that, cancel and configure Face ID or fingerprint in your device settings first. Removing this browser link does not delete a credential from your device’s passkey manager.</p>
       </section>
     </div>}
     {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>

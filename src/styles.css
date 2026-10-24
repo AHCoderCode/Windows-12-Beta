@@ -2159,3 +2159,83 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 @media(prefers-reduced-motion:reduce){
  .master-chat-voice-play,.master-chat-voice-wave span{transition:none!important}
 }
+
+
+/* Final iOS app-shell and Master Chat interaction fixes. */
+.ios-mode-shell .window.ios-app-window,
+.ios-mode-shell .window.ios-master-chat-window {
+  position: fixed !important; inset: 0 !important; left: 0 !important; top: 0 !important;
+  width: 100vw !important; width: 100dvw !important; height: 100vh !important; height: 100dvh !important;
+  max-width: none !important; max-height: none !important; min-width: 0 !important; min-height: 0 !important;
+  resize: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: transparent !important;
+}
+.ios-mode-shell .window.ios-app-window .window-title,
+.ios-mode-shell .window.ios-master-chat-window .window-title { display: none !important; }
+.ios-mode-shell .window.ios-app-window .window-content {
+  width: 100% !important; height: 100% !important; min-height: 0 !important; max-height: none !important; border-radius: 0 !important;
+}
+.ios-mode-shell .window.ios-master-chat-window .window-content {
+  min-height: 0 !important; overflow: hidden !important;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 48px) !important;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 27px) !important;
+}
+.ios-mode-shell .window.ios-master-chat-window .master-chat-app.master-chat-conversation-fullscreen {
+  top: calc(env(safe-area-inset-top, 0px) + 46px) !important;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px) !important; height: auto !important;
+}
+.ios-shell.is-app-active .ios-app-topbar {
+  top: calc(env(safe-area-inset-top, 0px) + 5px) !important; left: 0 !important; right: 0 !important;
+  transform: none !important; width: 100vw !important; max-width: none !important; padding: 0 12px !important; z-index: 7 !important;
+}
+.ios-app-close {
+  flex: 0 0 auto; display: inline-grid; place-items: center; width: 35px; height: 35px;
+  border: 1px solid #ffffff2b; border-radius: 50%; background: #101a38b8; color: #fff;
+  box-shadow: 0 3px 12px #0002; backdrop-filter: blur(18px); touch-action: manipulation;
+}
+.ios-app-close:hover, .ios-app-close:focus-visible { background: #e34b62; outline-offset: 2px; }
+.ios-app-title { max-width: 30% !important; }
+.ios-shell.has-master-chat-app .ios-app-top-actions { margin-right: 60px; }
+.ios-shell.is-app-active .ios-home-indicator { bottom: calc(2px + env(safe-area-inset-bottom, 0px)) !important; }
+.master-chat-voice-call-button {
+  position: fixed !important; top: calc(env(safe-area-inset-top, 0px) + 10px) !important;
+  right: calc(env(safe-area-inset-right, 0px) + 12px) !important; z-index: 2147483001 !important;
+  min-width: 42px; min-height: 40px; display: flex !important; align-items: center !important;
+  justify-content: center !important; pointer-events: auto !important; touch-action: manipulation;
+}
+.master-chat-recipient-picker-overlay, .master-chat-call-overlay, .master-chat-voice-notice { z-index: 2147483643 !important; }
+.master-chat-ios-fullscreen-exit {
+  top: calc(env(safe-area-inset-top, 0px) + 52px) !important;
+  left: calc(env(safe-area-inset-left, 0px) + 10px) !important; z-index: 2147483646 !important;
+}
+.master-chat-passkey-actions {
+  display: flex; align-items: center; justify-content: flex-end; flex: 0 0 auto;
+  flex-wrap: wrap; gap: 7px; max-width: 250px;
+}
+.master-chat-passkey-choice {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 35px;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--soft); color: var(--text); font-size: 11px; font-weight: 700;
+  white-space: nowrap; touch-action: manipulation;
+}
+.master-chat-passkey-choice:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--soft)); }
+.master-chat-passkey-choice:disabled { cursor: wait; opacity: .65; }
+@media (min-width: 760px) {
+  .ios-shell.is-app-active .ios-app-topbar {
+    top: calc(env(safe-area-inset-top, 0px) + 5px) !important; left: 0 !important; right: 0 !important;
+    transform: none !important; width: 100vw !important; padding: 0 12px !important;
+  }
+  .ios-shell.is-app-active .ios-home-indicator { bottom: calc(2px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+@media (max-width: 560px) {
+  .master-chat-passkey-row { align-items: flex-start !important; }
+  .master-chat-passkey-actions { width: 100%; max-width: none; justify-content: stretch; margin-top: 8px; }
+  .master-chat-passkey-choice { flex: 1 1 130px; }
+}
+@media (max-width: 380px) {
+  .ios-app-topbar { gap: 5px !important; padding-inline: 7px !important; }
+  .ios-app-close { width: 31px; height: 31px; }
+  .ios-app-title { max-width: 22% !important; font-size: 10px !important; }
+  .ios-app-top-actions { gap: 4px !important; }
+  .ios-app-top-actions button { padding: 6px 7px !important; font-size: 9px !important; }
+}
