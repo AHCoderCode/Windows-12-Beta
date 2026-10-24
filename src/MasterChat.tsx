@@ -1807,6 +1807,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setAccountSettingsOpen(false);
     setPinChangeOpen(true);
     setPinChangeError('');
+    setPasskeyError('');
     setPinCurrentValue('');
     setPinNewValue('');
     setPinNewConfirmValue('');
@@ -1814,6 +1815,13 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const saveLocalPasskey = async (method: 'face' | 'fingerprint') => {
     if (!profile || passkeyBusy) return;
+    // A device passkey cannot guarantee biometric-only use on the web. Require a separate
+    // app PIN so a system pattern/PIN fallback or unavailable biometric never becomes the
+    // only way back into this browser's chat session.
+    if (!pinRecord) {
+      setPasskeyError('First create a custom four-digit Master Chat app PIN using the Set PIN option above. It is separate from your phone pattern/PIN and is your fallback if the device authenticator requests a screen-lock credential or biometrics are unavailable.');
+      return;
+    }
     setPasskeyBusy(true);
     setPasskeyError('');
     try {
@@ -1891,6 +1899,17 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPasskeyBusy(true);
     setPinError('');
     try {
+      // The local credential is tied to the Master Chat account that created it.
+      // Check the persisted Supabase session before invoking the device authenticator.
+      if (!supabaseClient) throw new Error('Master Chat account verification is unavailable. Use your custom app PIN or reconnect and sign in again.');
+      const { data: authData, error: authError } = await supabaseClient.auth.getSession();
+      const signedInUserId = authData.session?.user?.id;
+      if (authError || !signedInUserId) {
+        throw new Error('Your Master Chat sign-in could not be verified. Reconnect and sign in again, or use your custom app PIN.');
+      }
+      if (signedInUserId !== saved.userId) {
+        throw new Error('This device passkey was registered for a different Master Chat account. Use your custom app PIN and sign in to the matching account.');
+      }
       if (!window.isSecureContext || !navigator.credentials || typeof navigator.credentials.get !== 'function') {
         throw new Error('Biometric unlock needs a current browser on HTTPS (or localhost) with WebAuthn support.');
       }
