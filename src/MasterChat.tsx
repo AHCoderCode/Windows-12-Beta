@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Smile, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
@@ -94,8 +94,82 @@ async function compressImageForGroup(file: File) {
 }
 type AuthMode = 'signin' | 'signup';
 type PinRecord = { version: 1; salt: string; verifier: string };
+type LocalPasskeyRecord = { version: 1; credentialId: string; publicKeySpki: string; rpId: string; origin: string };
 const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
+const PASSKEY_STORAGE_KEY = 'aeroshell.master-chat.local-passkey.v1';
 const PIN_THROTTLE_KEY = 'aeroshell.master-chat.pin-throttle.v1';
+
+function bytesToBase64Url(value: ArrayBuffer | Uint8Array) {
+  const bytes = value instanceof Uint8Array ? value : new Uint8Array(value);
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(value: string) {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(base64 + '='.repeat((4 - base64.length % 4) % 4));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function asArrayBuffer(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array) {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) mismatch |= left[index] ^ right[index];
+  return mismatch === 0;
+}
+
+function derEcdsaSignatureToRaw(signature: ArrayBuffer) {
+  const bytes = new Uint8Array(signature);
+  let offset = 0;
+  if (bytes[offset++] !== 0x30) throw new Error('The passkey returned an invalid signature.');
+  let sequenceLength = bytes[offset++];
+  if (sequenceLength & 0x80) offset += sequenceLength & 0x7f;
+  const readInteger = () => {
+    if (bytes[offset++] !== 0x02) throw new Error('The passkey returned an invalid signature.');
+    let length = bytes[offset++];
+    if (length & 0x80) {
+      const count = length & 0x7f;
+      length = 0;
+      for (let index = 0; index < count; index += 1) length = length * 256 + bytes[offset++];
+    }
+    let integer = bytes.slice(offset, offset + length);
+    offset += length;
+    while (integer.length > 32 && integer[0] === 0) integer = integer.slice(1);
+    if (integer.length > 32) throw new Error('The passkey signature uses an unsupported key size.');
+    return integer;
+  };
+  const r = readInteger();
+  const s = readInteger();
+  const raw = new Uint8Array(64);
+  raw.set(r, 32 - r.length);
+  raw.set(s, 64 - s.length);
+  return raw.buffer;
+}
+
+function smartEmojiSuggestions(text: string) {
+  const value = text.toLowerCase();
+  const rules: Array<{ tokens: string[]; emojis: string[] }> = [
+    { tokens: ['thank', 'thanks', 'appreciate'], emojis: ['🙏', '💜', '✨', '😊'] },
+    { tokens: ['love', 'heart', 'miss you', 'care'], emojis: ['❤️', '🥹', '💗', '🫶'] },
+    { tokens: ['haha', 'lol', 'funny', 'joke', '😂'], emojis: ['😂', '🤣', '😭', '😆'] },
+    { tokens: ['happy', 'great', 'awesome', 'yay', 'good news', 'congrats'], emojis: ['🎉', '🥳', '✨', '🙌'] },
+    { tokens: ['sad', 'sorry', 'hard day', 'upset'], emojis: ['🫂', '💜', '🥺', '🤍'] },
+    { tokens: ['work', 'study', 'focus', 'exam', 'project'], emojis: ['💪', '🧠', '📚', '⚡'] },
+    { tokens: ['yes', 'agree', 'okay', 'ok', 'done'], emojis: ['👍', '✅', '👌', '💯'] },
+    { tokens: ['question', 'why', 'how', 'confused'], emojis: ['🤔', '🧐', '💡', '❓'] },
+  ];
+  const matched = rules.filter(rule => rule.tokens.some(token => value.includes(token))).flatMap(rule => rule.emojis);
+  return [...new Set([...(matched.length ? matched : []), '😊', '✨', '❤️', '👍', '😂', '🙏', '🔥'])].slice(0, 8);
+}
 
 function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -222,12 +296,16 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [accountPasswordBusy, setAccountPasswordBusy] = useState(false);
   const [accountPasswordError, setAccountPasswordError] = useState('');
   const [draft, setDraft] = useState('');
+  const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair' | 'off'>('loading');
   const [pinRecord, setPinRecord] = useState<PinRecord | null>(null);
+  const [passkeyRecord, setPasskeyRecord] = useState<LocalPasskeyRecord | null>(null);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyError, setPasskeyError] = useState('');
   const [pinUnlocked, setPinUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
@@ -399,12 +477,29 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }, []);
 
   useEffect(() => {
+    let loadedPasskey: LocalPasskeyRecord | null = null;
+    try {
+      const rawPasskey = localStorage.getItem(PASSKEY_STORAGE_KEY);
+      if (rawPasskey) {
+        const value = JSON.parse(rawPasskey) as Partial<LocalPasskeyRecord>;
+        if (value.version === 1 && typeof value.credentialId === 'string' && value.credentialId.length >= 16 &&
+            typeof value.publicKeySpki === 'string' && value.publicKeySpki.length >= 40 &&
+            value.rpId === window.location.hostname && value.origin === window.location.origin) {
+          loadedPasskey = value as LocalPasskeyRecord;
+        }
+      }
+    } catch { /* A broken passkey record must not be treated as an authenticator. */ }
+    setPasskeyRecord(loadedPasskey);
     try {
       const raw = localStorage.getItem(PIN_STORAGE_KEY);
       if (!raw) {
-        // The app PIN is optional; users can configure it later in Privacy & app PIN.
-        setPinMode('off');
-        setPinUnlocked(true);
+        if (loadedPasskey) {
+          setPinMode('unlock');
+          setPinUnlocked(false);
+        } else {
+          setPinMode('off');
+          setPinUnlocked(true);
+        }
       } else {
         const value = JSON.parse(raw) as Partial<PinRecord>;
         if (value.version === 1 && typeof value.salt === 'string' && /^[a-f0-9]{32}$/.test(value.salt) &&
@@ -1323,6 +1418,138 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     }
   };
 
+  const registerPasskey = async () => {
+    if (passkeyBusy) return;
+    setPasskeyBusy(true);
+    setPasskeyError('');
+    try {
+      if (!window.isSecureContext || !navigator.credentials || typeof PublicKeyCredential === 'undefined') {
+        throw new Error('Passkeys need HTTPS (or localhost) and a browser that supports device-backed WebAuthn.');
+      }
+      if (passkeyRecord && !confirm('Replace the existing Master Chat passkey for this browser and site?')) return;
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          challenge: asArrayBuffer(challenge),
+          rp: { name: 'Master Chat local unlock', id: window.location.hostname },
+          user: { id: asArrayBuffer(crypto.getRandomValues(new Uint8Array(16))), name: 'aeroshell-master-chat', displayName: 'Master Chat on this device' },
+          pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+          timeout: 60000,
+          authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' },
+          attestation: 'none',
+        },
+      });
+      if (!(credential instanceof PublicKeyCredential)) throw new Error('Your device did not create a passkey. Choose a PIN or use a supported browser/device.');
+      const response = credential.response as AuthenticatorAttestationResponse & { getPublicKey?: () => ArrayBuffer | null; getPublicKeyAlgorithm?: () => number };
+      const clientData = JSON.parse(new TextDecoder().decode(response.clientDataJSON)) as { type?: unknown; challenge?: unknown; origin?: unknown };
+      if (clientData.type !== 'webauthn.create' || clientData.challenge !== bytesToBase64Url(challenge) || clientData.origin !== window.location.origin) {
+        throw new Error('Passkey registration could not be verified for this site.');
+      }
+      if (typeof response.getPublicKey !== 'function' || typeof response.getPublicKeyAlgorithm !== 'function') {
+        throw new Error('This browser cannot expose the passkey public key needed for local signature verification. Update your browser or keep using a PIN.');
+      }
+      const publicKey = response.getPublicKey();
+      const algorithm = response.getPublicKeyAlgorithm();
+      if (!publicKey || algorithm !== -7) throw new Error('This browser returned an unsupported passkey format. Keep using a PIN on this device.');
+      const record: LocalPasskeyRecord = {
+        version: 1,
+        credentialId: bytesToBase64Url(credential.rawId),
+        publicKeySpki: bytesToBase64Url(publicKey),
+        rpId: window.location.hostname,
+        origin: window.location.origin,
+      };
+      localStorage.setItem(PASSKEY_STORAGE_KEY, JSON.stringify(record));
+      setPasskeyRecord(record);
+      setPasskeyError('');
+      tell('Passkey ready. The biometric or device verification stays with your device; Master Chat stores only the public key and credential ID in this browser.', 'success');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError') {
+        setPasskeyError('Passkey setup was cancelled or the device could not verify you. Try again or keep using your PIN.');
+      } else {
+        setPasskeyError(error instanceof Error ? error.message : 'Could not configure a passkey on this device.');
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const unlockWithPasskey = async () => {
+    if (!passkeyRecord || passkeyBusy) return;
+    setPasskeyBusy(true);
+    setPinError('');
+    try {
+      if (!window.isSecureContext || !navigator.credentials || typeof PublicKeyCredential === 'undefined') {
+        throw new Error('Passkeys require a supported browser on HTTPS (or localhost).');
+      }
+      if (passkeyRecord.rpId !== window.location.hostname || passkeyRecord.origin !== window.location.origin) {
+        throw new Error('This passkey belongs to a different site origin. Use your PIN if available.');
+      }
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const credential = await navigator.credentials.get({
+        publicKey: {
+          challenge: asArrayBuffer(challenge),
+          rpId: passkeyRecord.rpId,
+          allowCredentials: [{ type: 'public-key', id: asArrayBuffer(base64UrlToBytes(passkeyRecord.credentialId)) }],
+          timeout: 60000,
+          userVerification: 'required',
+        },
+      });
+      if (!(credential instanceof PublicKeyCredential) || bytesToBase64Url(credential.rawId) !== passkeyRecord.credentialId) {
+        throw new Error('The selected passkey did not match this Master Chat lock.');
+      }
+      const assertion = credential.response as AuthenticatorAssertionResponse;
+      const authenticatorData = new Uint8Array(assertion.authenticatorData);
+      if (authenticatorData.length < 37 || (authenticatorData[32] & 0x04) === 0) {
+        throw new Error('The device did not confirm user verification. Try again.');
+      }
+      const expectedRpHash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(passkeyRecord.rpId)));
+      if (!equalBytes(authenticatorData.slice(0, 32), expectedRpHash)) throw new Error('Passkey site verification failed.');
+      const clientData = JSON.parse(new TextDecoder().decode(assertion.clientDataJSON)) as { type?: unknown; challenge?: unknown; origin?: unknown };
+      if (clientData.type !== 'webauthn.get' || clientData.challenge !== bytesToBase64Url(challenge) || clientData.origin !== passkeyRecord.origin) {
+        throw new Error('Passkey challenge or site verification failed.');
+      }
+      const publicKey = await crypto.subtle.importKey('spki', asArrayBuffer(base64UrlToBytes(passkeyRecord.publicKeySpki)), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      const clientDataHash = new Uint8Array(await crypto.subtle.digest('SHA-256', assertion.clientDataJSON));
+      const signedData = new Uint8Array(authenticatorData.length + clientDataHash.length);
+      signedData.set(authenticatorData, 0);
+      signedData.set(clientDataHash, authenticatorData.length);
+      const signature = derEcdsaSignatureToRaw(assertion.signature);
+      const valid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, signature, asArrayBuffer(signedData));
+      if (!valid) {
+        recordPinFailure();
+        throw new Error('The passkey signature could not be verified. Use your PIN if available.');
+      }
+      clearPinFailures();
+      setPinCooldownUntil(0);
+      setPinInput('');
+      setPinError('');
+      setPinUnlocked(true);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError') setPinError('Passkey cancelled or not recognized. Try again or enter your PIN.');
+      else setPinError(error instanceof Error ? error.message : 'Could not verify the passkey. Use your PIN if available.');
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const removePasskey = () => {
+    if (!passkeyRecord || passkeyBusy) return;
+    const remainingLock = pinRecord ? 'Your existing app PIN will continue protecting Master Chat.' : 'No app PIN is set, so removing this passkey will leave Master Chat without an app lock.';
+    if (!confirm('Remove the passkey stored for this browser and site? ' + remainingLock)) return;
+    try {
+      localStorage.removeItem(PASSKEY_STORAGE_KEY);
+      setPasskeyRecord(null);
+      setPasskeyError('');
+      if (!pinRecord) {
+        setPinMode('off');
+        setPinUnlocked(true);
+      }
+      tell('Master Chat passkey removed from this browser.', 'success');
+    } catch {
+      setPasskeyError('Browser storage is blocked, so the passkey could not be removed.');
+    }
+  };
+
   const openPinSettings = () => {
     setAccountSettingsOpen(false);
     setPinChangeOpen(true);
@@ -1526,8 +1753,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const lockApp = () => {
     if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
-    if (!pinRecord) {
-      tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
+    if (!pinRecord && !passkeyRecord) {
+      tell('Set an optional PIN or a device passkey in Master Chat’s local app-lock settings first.', 'info');
       return;
     }
     setConversationFullscreen(false);
@@ -1546,7 +1773,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   lockAppRef.current = lockApp;
 
   useEffect(() => {
-    if (!pinUnlocked || !pinRecord) return;
+    if (!pinUnlocked || (!pinRecord && !passkeyRecord)) return;
     let timer = window.setTimeout(() => lockAppRef.current(), 5 * 60 * 1000);
     const resetTimer = () => {
       window.clearTimeout(timer);
@@ -1566,7 +1793,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       document.removeEventListener('touchstart', resetTimer, true);
       document.removeEventListener('visibilitychange', lockWhenHidden);
     };
-  }, [pinUnlocked, pinRecord]);
+  }, [pinUnlocked, pinRecord, passkeyRecord]);
 
   useEffect(() => {
     if (!pinCooldownUntil || pinCooldownUntil <= Date.now()) return;
@@ -1610,9 +1837,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <form className="master-chat-pin-card" onSubmit={submitPin}>
         <span className="master-chat-pin-icon"><LockKeyhole size={25}/></span>
         <p className="eyebrow">AEROSHELL · LOCAL APP LOCK</p>
-        <h2>{isSetup ? 'Create your 4-digit PIN' : isRepair ? 'Local PIN needs repair' : 'Unlock Master Chat'}</h2>
-        <p>{isSetup ? 'This PIN is separate from your Master Chat account password and is stored only in this browser.' : isRepair ? 'The local PIN could not be read. Repairing it only resets this browser lock, not your online account.' : 'Enter the four digits to open the messaging app.'}</p>
-        {!isRepair && <>
+        <h2>{isSetup ? 'Create your 4-digit PIN' : isRepair ? 'Local PIN needs repair' : pinRecord ? 'Unlock Master Chat' : 'Unlock with passkey'}</h2>
+        <p>{isSetup ? 'This PIN is separate from your account password and stays in this browser.' : isRepair ? 'Repairing resets the local PIN only; it does not recover or delete your online account.' : pinRecord && passkeyRecord ? 'Use your fingerprint, face, device passcode, or the four-digit app PIN to continue.' : pinRecord ? 'Enter your four-digit app PIN, or use your device passkey if it is configured.' : 'Confirm with the device passkey that you set up for Master Chat.'}</p>
+        {!isRepair && (isSetup || pinRecord) && <>
           <label className="master-chat-pin-label">{isSetup ? 'New PIN' : 'Four-digit PIN'}
             <input autoFocus inputMode="numeric" pattern="[0-9]{4}" type="password" autoComplete="off" maxLength={4} value={pinInput}
               onChange={event => setPinInput(event.target.value.replace(/\D/g, '').slice(0, 4))} aria-label="Four-digit app PIN" required/>
@@ -1624,7 +1851,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           {cooldownSeconds > 0 && !isSetup && <p className="master-chat-pin-warning"><AlertTriangle size={15}/> Too many attempts. Try again in {cooldownSeconds}s.</p>}
         </>}
         {pinError && <p className="master-chat-notice error" role="alert">{pinError}</p>}
-        {!isRepair && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages'}</button>}
+        {!isRepair && (isSetup || pinRecord) && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages with PIN'}</button>}
+        {passkeyRecord && <button type="button" className="master-chat-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithPasskey()}><Fingerprint size={18}/>{passkeyBusy ? 'Waiting for device…' : 'Unlock with passkey'}</button>}
         {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
         <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
       </form>
@@ -1782,11 +2010,13 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-composer-tools">
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
+              <button type="button" className={'master-chat-composer-tool'+(emojiPanelOpen ? ' recording' : '')} disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => setEmojiPanelOpen(value => !value)} title="Show context-aware emoji suggestions"><Smile size={16}/><span>Smart emoji</span></button>
               <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy || voicePreparing} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : voicePreparing ? 'Requesting microphone access' : 'Record a voice message'}><Mic size={16}/><span>{voicePreparing ? 'Starting…' : recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
               {voicePreparing && <span className="master-chat-recording-indicator"><i/> Waiting for microphone…</span>}
               {recordingVoice && <span className="master-chat-recording-indicator"><i/> Recording · 2 min max</span>}
               {attachmentBusy && <span className="master-chat-attachment-progress"><span className="master-chat-spinner small"/> Sending…</span>}
             </div>
+            {emojiPanelOpen && <div className="master-chat-emoji-panel" aria-label="Smart emoji suggestions"><div className="master-chat-emoji-panel-heading"><b>Smart emoji ideas</b><small>Local suggestions based on your message · no external AI service configured</small></div><div className="master-chat-emoji-list">{smartEmojiSuggestions(draft).map(emoji => <button type="button" key={emoji} aria-label={'Insert '+emoji} onClick={() => {setDraft(value => value + emoji);inputRef.current?.focus();}}>{emoji}</button>)}</div></div>}
             <div className="master-chat-composer-footer"><small>Enter to send · Shift + Enter for a new line · {draft.length}/2000</small><button type="submit" disabled={!draft.trim() || sending || attachmentBusy} aria-label="Send message">{sending ? <span className="master-chat-spinner small"/> : <Send size={16}/>}</button></div>
           </div>
         </form>
@@ -1806,12 +2036,17 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             {profile.avatar_data && <button type="button" className="master-chat-account-remove-photo" title="Remove profile picture" aria-label="Remove profile picture" disabled={avatarBusy} onClick={()=>void removeProfileAvatar()}><Trash2 size={15}/></button>}
           </div>
           <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><ShieldCheck size={18}/><span><b>Optional app PIN</b><small>{pinRecord?'PIN protection is enabled in this browser.':'No PIN is set. Master Chat remains available without one.'}</small></span></div>
+            <div className="master-chat-account-setting-copy"><ShieldCheck size={18}/><span><b>Optional app PIN</b><small>{pinRecord?'PIN protection is enabled in this browser.':passkeyRecord?'No PIN is set; your device passkey protects app opening.':'No PIN is set. Master Chat remains available without an app lock.'}</small></span></div>
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
+          <div className="master-chat-account-setting-row master-chat-passkey-setting">
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Device passkey · app-only</b><small>{passkeyRecord ? 'A device-backed passkey is ready for this browser and site.' : 'Use the device’s fingerprint, face, or screen-lock verification when supported. This is not your account sign-in.'}</small></span></div>
+            <div className="master-chat-passkey-actions"><button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={() => void registerPasskey()}>{passkeyBusy ? 'Working…' : passkeyRecord ? 'Replace' : 'Set up'} <ChevronRight size={15}/></button>{passkeyRecord && <button type="button" className="master-chat-account-remove-photo" title="Remove passkey" aria-label="Remove passkey" disabled={passkeyBusy} onClick={removePasskey}><Trash2 size={15}/></button>}</div>
+          </div>
+          {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
           <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord?'Lock now; a four-digit PIN will be needed to return.':'Set an optional PIN first to enable the app lock.'}</small></span></div>
-            <button type="button" className="master-chat-account-action" disabled={!pinRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
+            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord && passkeyRecord ? 'Lock now; your PIN or device passkey can unlock Master Chat.' : pinRecord ? 'Lock now; the four-digit app PIN will be needed to return.' : passkeyRecord ? 'Lock now; your device passkey will be needed to return.' : 'Set an optional app PIN or passkey first to enable the app lock.'}</small></span></div>
+            <button type="button" className="master-chat-account-action" disabled={!pinRecord && !passkeyRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
           </div>
           <div className="master-chat-account-setting-row">
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>System password</b><small>Change your Master Chat sign-in password. This does not change your Windows or phone password.</small></span></div>
@@ -1822,7 +2057,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
-        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> Your app PIN is stored only in this browser. It is separate from your account password and does not encrypt messages.</p>
+        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN verifier and passkey public key are stored locally. Device biometrics stay with your OS authenticator; this app lock is not account authentication or message encryption.</p>
       </section>
     </div>}
     {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>
