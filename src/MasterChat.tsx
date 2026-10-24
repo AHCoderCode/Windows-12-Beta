@@ -121,7 +121,7 @@ async function compressImageForGroup(file: File) {
 }
 type AuthMode = 'signin' | 'signup';
 type PinRecord = { version: 1; salt: string; verifier: string };
-type LocalPasskeyRecord = { version: 1; credentialId: string; publicKey: string; rpId: string; userId: string; method?: 'face' | 'fingerprint'; algorithm: -7; signCount: number; createdAt: string };
+type LocalPasskeyRecord = { version: 1; credentialId: string; publicKey: string; rpId: string; userId: string; method?: 'face' | 'fingerprint' | 'device'; algorithm: -7; signCount: number; createdAt: string };
 const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
 const PIN_THROTTLE_KEY = 'aeroshell.master-chat.pin-throttle.v1';
 const LOCAL_PASSKEY_STORAGE_KEY = 'aeroshell.master-chat.passkey.v1';
@@ -1813,7 +1813,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinNewConfirmValue('');
   };
 
-  const saveLocalPasskey = async (method: 'face' | 'fingerprint') => {
+  const saveLocalPasskey = async (method: 'device') => {
     if (!profile || passkeyBusy) return;
     // A device passkey cannot guarantee biometric-only use on the web. Require a separate
     // app PIN so a system pattern/PIN fallback or unavailable biometric never becomes the
@@ -1826,7 +1826,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPasskeyError('');
     try {
       if (!window.isSecureContext || !navigator.credentials || typeof navigator.credentials.create !== 'function') {
-        throw new Error('Biometric passkeys need a current browser on HTTPS (or localhost) with WebAuthn support.');
+        throw new Error('Device passkeys need a current browser on HTTPS (or localhost) with WebAuthn support.');
       }
       if (!globalThis.crypto?.subtle) throw new Error('Secure browser cryptography is unavailable.');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -1844,7 +1844,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
         },
       }) as PublicKeyCredential | null;
-      if (!created || created.type !== 'public-key') throw new Error('Your device did not create a built-in biometric passkey. Check that Face ID, fingerprint, or Windows Hello is configured, or use your app PIN.');
+      if (!created || created.type !== 'public-key') throw new Error('Your device did not create a platform passkey. Check your device authenticator/passkey settings, or continue using your custom Master Chat app PIN.');
       const response = created.response as AuthenticatorAttestationResponse & {
         getPublicKey?: () => ArrayBuffer | null;
         getPublicKeyAlgorithm?: () => number;
@@ -1872,7 +1872,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.setItem(LOCAL_PASSKEY_STORAGE_KEY, JSON.stringify(record));
       setLocalPasskey(record);
       setPasskeyError('');
-      tell(`Device passkey created with ${method === 'face' ? 'Face ID' : 'fingerprint'} as your preference. The operating system may still request a pattern/PIN fallback.`, 'success');
+      tell('Device passkey created. Your operating system chooses the verification method and may request its screen-lock pattern/PIN. Your separate Master Chat app PIN remains the fallback for this site.', 'success');
     } catch (error) {
       setPasskeyError(error instanceof Error ? error.message : 'Could not set up a passkey on this device.');
     } finally {
@@ -1911,7 +1911,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         throw new Error('This device passkey was registered for a different Master Chat account. Use your custom app PIN and sign in to the matching account.');
       }
       if (!window.isSecureContext || !navigator.credentials || typeof navigator.credentials.get !== 'function') {
-        throw new Error('Biometric unlock needs a current browser on HTTPS (or localhost) with WebAuthn support.');
+        throw new Error('Device passkey unlock needs a current browser on HTTPS (or localhost) with WebAuthn support.');
       }
       if (!globalThis.crypto?.subtle) throw new Error('Secure browser cryptography is unavailable.');
       if (saved.rpId !== window.location.hostname) throw new Error('This passkey was registered for a different website address.');
@@ -1925,7 +1925,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           userVerification: 'required',
         },
       }) as PublicKeyCredential | null;
-      if (!credential || credential.type !== 'public-key') throw new Error('No biometric passkey response was returned. Check your device screen-lock settings and try again.');
+      if (!credential || credential.type !== 'public-key') throw new Error('No device passkey response was returned. Check your device authenticator settings and try again, or use your custom Master Chat app PIN.');
       if (passkeyToBase64Url(credential.rawId) !== saved.credentialId) throw new Error('The selected passkey does not match this browser’s registered credential.');
       const response = credential.response as AuthenticatorAssertionResponse;
       const clientDataBytes = new Uint8Array(response.clientDataJSON);
@@ -2248,7 +2248,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
           <p className="master-chat-passkey-preflight-note">If you do not want any pattern/PIN prompt, choose Cancel now. A website cannot guarantee biometric-only authentication; that requires a native app configured to allow biometrics without device-credential fallback.</p>
           <div className="master-chat-feature-modal-actions">
             <button type="button" className="secondary-button" onClick={()=>setPasskeyPromptIntent(null)}>Cancel — don't open prompt</button>
-            <button type="button" className="master-chat-primary" disabled={passkeyBusy} onClick={()=>{const intent=passkeyPromptIntent;setPasskeyPromptIntent(null);if(intent.action==='create' && (intent.method==='face'||intent.method==='fingerprint'))void saveLocalPasskey(intent.method);else void unlockWithLocalPasskey();}}>Continue to device prompt</button>
+            <button type="button" className="master-chat-primary" disabled={passkeyBusy} onClick={()=>{const intent=passkeyPromptIntent;setPasskeyPromptIntent(null);if(intent.action==='create')void saveLocalPasskey('device');else void unlockWithLocalPasskey();}}>Continue to device prompt</button>
           </div>
         </section>
       </div>,
@@ -2482,13 +2482,12 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
           {localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>{localPasskey.method === 'face' ? 'Face ID preferred' : localPasskey.method === 'fingerprint' ? 'Fingerprint preferred' : 'Device passkey saved'}</b><small>Saved in this browser. Android may still request its configured screen-lock pattern/PIN.</small></span></div>
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Device passkey saved</b><small>Saved for this browser and account. The operating system chooses facial recognition, fingerprint, or its screen-lock pattern/PIN.</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={removeLocalPasskey}>Remove <ChevronRight size={15}/></button>
           </div> : <div className="master-chat-account-setting-row master-chat-passkey-row">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Create a biometric passkey</b><small>Choose a preferred method. The operating system controls which biometric is available.</small></span></div>
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Create a device passkey</b><small>Uses your device authenticator. Your browser cannot choose Face ID versus fingerprint or prevent the system's screen-lock pattern/PIN fallback.</small></span></div>
             <div className="master-chat-passkey-actions">
-              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');setPasskeyPromptIntent({method:'face',action:'create'});}}><ShieldCheck size={15}/>Prefer Face ID</button>
-              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');setPasskeyPromptIntent({method:'fingerprint',action:'create'});}}><Fingerprint size={15}/>Prefer fingerprint</button>
+              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');setPasskeyPromptIntent({method:'device',action:'create'});}}><Fingerprint size={15}/>Create device passkey</button>
             </div>
           </div>}
           {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
