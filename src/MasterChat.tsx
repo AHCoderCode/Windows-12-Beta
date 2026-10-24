@@ -920,6 +920,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   };
 
   useEffect(() => () => {
+    voicePreparingRef.current = false;
     if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
     const recorder = voiceRecorderRef.current;
     if (recorder) {
