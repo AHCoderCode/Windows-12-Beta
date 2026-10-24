@@ -515,13 +515,17 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
 
   return <>
     <audio ref={remoteAudioRef} autoPlay playsInline aria-label="Remote voice call audio" className="master-chat-remote-audio"/>
-    {showCallLauncher && callState === 'idle' && createPortal(
-      <button type="button" className="master-chat-voice-call-button"
-        onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
-        title="Choose whom to call" aria-label="Choose whom to call">
-        <PhoneCall size={17}/> <span>Call someone</span>
-      </button>, portalRoot ?? document.body
-    )}
+    {showCallLauncher && callState === 'idle' && (portalRoot
+      ? createPortal(<button type="button" className="master-chat-voice-call-button"
+          onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
+          title="Choose whom to call" aria-label="Choose whom to call">
+          <PhoneCall size={17}/> <span>Call someone</span>
+        </button>, portalRoot)
+      : <button type="button" className="master-chat-voice-call-button"
+          onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
+          title="Choose whom to call" aria-label="Choose whom to call">
+          <PhoneCall size={17}/> <span>Call someone</span>
+        </button>)}
     {recipientPickerOpen && showCallLauncher && createPortal(
       <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
         <section className="master-chat-recipient-picker" role="dialog" aria-modal="true" aria-label="Choose a person to call">
