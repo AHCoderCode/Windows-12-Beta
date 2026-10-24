@@ -1,7 +1,8 @@
 export type ConversationMessage = {
   id: string;
   sender_id: string;
-  recipient_id: string;
+  recipient_id: string | null;
+  group_id?: string | null;
   created_at: string;
 };
 
@@ -42,5 +43,25 @@ export function mergeConversationMessages<T extends ConversationMessage>(
   for (const message of getConversationMessages(fetched, userId, peerId)) {
     byId.set(message.id, message);
   }
+  return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+
+export function getGroupMessages<T extends ConversationMessage>(
+  messages: readonly T[],
+  groupId: string,
+): T[] {
+  if (!groupId) return [];
+  return messages.filter(message => message.group_id === groupId);
+}
+
+export function mergeGroupMessages<T extends ConversationMessage>(
+  current: readonly T[],
+  fetched: readonly T[],
+  groupId: string,
+): T[] {
+  const byId = new Map<string, T>();
+  for (const message of getGroupMessages(current, groupId)) byId.set(message.id, message);
+  for (const message of getGroupMessages(fetched, groupId)) byId.set(message.id, message);
   return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
 }

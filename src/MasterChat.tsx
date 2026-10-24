@@ -1,13 +1,97 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, EyeOff, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
-import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
+import { getConversationMessages, getGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
-type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
+type MessageType = 'text' | 'file' | 'voice';
+type ChatMessage = {
+  id: string;
+  sender_id: string;
+  recipient_id: string | null;
+  group_id?: string | null;
+  body: string;
+  message_type?: MessageType;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
+  attachment_mime?: string | null;
+  attachment_size?: number | null;
+  voice_duration_ms?: number | null;
+  attachment_url?: string | null;
+  created_at: string;
+};
+type ChatGroup = {
+  id: string;
+  name: string;
+  avatar_data: string | null;
+  created_by: string;
+  updated_at: string;
+  my_role: 'admin' | 'member';
+  member_count: number;
+};
+type ChatGroupMember = {
+  group_id: string;
+  user_id: string;
+  role: 'admin' | 'member';
+  added_by: string;
+  joined_at: string;
+  username: string;
+  avatar_data: string | null;
+};
+const ATTACHMENT_BUCKET = 'master-chat-attachments';
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MESSAGE_FIELDS = 'id, sender_id, recipient_id, group_id, body, message_type, attachment_path, attachment_name, attachment_mime, attachment_size, voice_duration_ms, created_at';
+function isVideoFile(file: File, messageType: 'file' | 'voice' = 'file') {
+  return file.type.toLowerCase().startsWith('video/')
+    || (messageType === 'file' && /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|ogv)$/i.test(file.name));
+}
+function safeAttachmentName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 180) || 'attachment.txt';
+}
+function mergeScopedMessages(current: ChatMessage[], incoming: ChatMessage[], userId: string, peerId: string | null, groupId: string | null) {
+  const inScope = (message: ChatMessage) => groupId
+    ? message.group_id === groupId
+    : !message.group_id && !!peerId && (
+      (message.sender_id === userId && message.recipient_id === peerId)
+      || (message.sender_id === peerId && message.recipient_id === userId)
+    );
+  const byId = new Map<string, ChatMessage>();
+  for (const message of current) if (inScope(message)) byId.set(message.id, message);
+  for (const message of incoming) if (inScope(message)) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+async function compressImageForGroup(file: File) {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file for the group picture.');
+  if (file.size > 8 * 1024 * 1024) throw new Error('Choose an image smaller than 8 MB.');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const candidate = new Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = () => reject(new Error('This image could not be opened.'));
+      candidate.src = objectUrl;
+    });
+    for (const maxSide of [192, 144, 96]) {
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Your browser could not prepare this image.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.82, 0.68, 0.54, 0.42]) {
+        const value = canvas.toDataURL('image/jpeg', quality);
+        if (value.length <= 60000) return value;
+      }
+    }
+    throw new Error('That group image is too large even after compression. Try a smaller picture.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 type AuthMode = 'signin' | 'signup';
 type PinRecord = { version: 1; salt: string; verifier: string };
 const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
@@ -114,7 +198,29 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [people, setPeople] = useState<ChatProfile[]>([]);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [activePerson, setActivePerson] = useState<ChatProfile | null>(null);
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [activeGroup, setActiveGroup] = useState<ChatGroup | null>(null);
+  const [groupMembers, setGroupMembers] = useState<ChatGroupMember[]>([]);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupDialogMode, setGroupDialogMode] = useState<'create' | 'manage'>('create');
+  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [groupAvatarDraft, setGroupAvatarDraft] = useState<string | null>(null);
+  const [groupMemberSelection, setGroupMemberSelection] = useState<string[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [recordingVoice, setRecordingVoice] = useState(false);
+  const [voicePreparing, setVoicePreparing] = useState(false);
+  const [pastedFileOpen, setPastedFileOpen] = useState(false);
+  const [pastedFileName, setPastedFileName] = useState('notes.txt');
+  const [pastedFileContent, setPastedFileContent] = useState('');
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const [accountCurrentPassword, setAccountCurrentPassword] = useState('');
+  const [accountNewPassword, setAccountNewPassword] = useState('');
+  const [accountConfirmPassword, setAccountConfirmPassword] = useState('');
+  const [accountPasswordBusy, setAccountPasswordBusy] = useState(false);
+  const [accountPasswordError, setAccountPasswordError] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState(false);
@@ -145,6 +251,13 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const endRef = useRef<HTMLDivElement>(null);
   const lockAppRef = useRef<() => void>(() => undefined);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voicePreparingRef = useRef(false);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceStartRef = useRef(0);
+  const voiceLimitTimerRef = useRef<number | null>(null);
 
   const tell = (text: string, kind: 'error' | 'success' | 'info' = 'info') => {
     setNotice(text);
@@ -240,6 +353,51 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPeople((data ?? []) as ChatProfile[]);
   }, []);
 
+  const loadGroups = useCallback(async (userId: string): Promise<ChatGroup[]> => {
+    if (!supabaseClient) return [];
+    const { data: memberships, error: membershipError } = await supabaseClient
+      .from('aeroshell_group_members').select('group_id, role').eq('user_id', userId);
+    if (membershipError) {
+      tell('Could not load groups. Check that the Master Chat groups migration is installed.', 'error');
+      return [];
+    }
+    const myMemberships = (memberships ?? []) as Array<{ group_id: string; role: 'admin' | 'member' }>;
+    if (!myMemberships.length) {
+      setGroups([]);
+      setActiveGroup(null);
+      return [];
+    }
+    const groupIds = myMemberships.map(item => item.group_id);
+    const [{ data: groupRows, error: groupError }, { data: rosterRows }] = await Promise.all([
+      supabaseClient.from('aeroshell_groups').select('id, name, avatar_data, created_by, updated_at').in('id', groupIds).order('updated_at', { ascending: false }),
+      supabaseClient.from('aeroshell_group_members').select('group_id, user_id, role').in('group_id', groupIds),
+    ]);
+    if (groupError) {
+      tell('Could not load group details. Check group database permissions.', 'error');
+      return [];
+    }
+    const roleById = new Map(myMemberships.map(item => [item.group_id, item.role]));
+    const countById = new Map<string, number>();
+    for (const item of (rosterRows ?? []) as Array<{ group_id: string }>) {
+      countById.set(item.group_id, (countById.get(item.group_id) ?? 0) + 1);
+    }
+    const loaded = ((groupRows ?? []) as Omit<ChatGroup, 'my_role' | 'member_count'>[]).map(group => ({
+      ...group,
+      my_role: roleById.get(group.id) ?? 'member',
+      member_count: countById.get(group.id) ?? 1,
+    }));
+    setGroups(loaded);
+    setActiveGroup(current => current ? loaded.find(group => group.id === current.id) ?? null : null);
+    return loaded;
+  }, []);
+
+  const withSignedAttachment = useCallback(async (message: ChatMessage): Promise<ChatMessage> => {
+    if (!supabaseClient || !message.attachment_path) return message;
+    const { data, error } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).createSignedUrl(message.attachment_path, 60 * 60);
+    if (error || !data?.signedUrl) return { ...message, attachment_url: null };
+    return { ...message, attachment_url: data.signedUrl };
+  }, []);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(PIN_STORAGE_KEY);
@@ -280,6 +438,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (current) {
         await loadProfile(current.user.id);
         await loadPeople(current.user.id);
+        await loadGroups(current.user.id);
       }
       if (active) setBooting(false);
     });
@@ -288,7 +447,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (!next) {
         setProfile(null);
         setPeople([]);
+        setGroups([]);
         setActivePerson(null);
+        setActiveGroup(null);
+        setGroupMembers([]);
         setMessages([]);
         setOnlineIds([]);
         setLive(false);
@@ -297,6 +459,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         window.setTimeout(() => {
           void loadProfile(next.user.id);
           void loadPeople(next.user.id);
+          void loadGroups(next.user.id);
           setBooting(false);
         }, 0);
       }
@@ -305,7 +468,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadPeople, loadProfile, pinUnlocked]);
+  }, [loadGroups, loadPeople, loadProfile, pinUnlocked]);
 
   useEffect(() => {
     if (!pinUnlocked || !supabaseClient || !session || !profile) return;
@@ -321,6 +484,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setPeople(current => current.map(person => person.id === changed.id ? { ...person, ...changed } : person));
       if (changed.id === profile.id) setProfile(current => current ? { ...current, ...changed } : current);
       setActivePerson(current => current?.id === changed.id ? { ...current, ...changed } : current);
+    }).on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_groups' }, () => {
+      void loadGroups(profile.id);
+    }).on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_group_members' }, () => {
+      void loadGroups(profile.id);
     }).subscribe(status => {
       setLive(status === 'SUBSCRIBED');
       if (status === 'SUBSCRIBED') {
@@ -332,39 +499,60 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setOnlineIds([]);
       setLive(false);
     };
-  }, [session, profile, pinUnlocked]);
+  }, [session, profile, pinUnlocked, loadGroups]);
 
   useEffect(() => {
-    if (!pinUnlocked || !supabaseClient || !session || !profile || !activePerson) {
+    if (!pinUnlocked || !supabaseClient || !session || !profile || (!activePerson && !activeGroup)) {
       setMessages([]);
       return;
     }
     let mounted = true;
-    // Keep the state scoped to this pair while loading; the render also filters defensively.
-    setMessages(current => getConversationMessages(current, profile.id, activePerson.id));
+    const groupId = activeGroup?.id ?? null;
+    const peerId = activePerson?.id ?? null;
+    setMessages(current => current.filter(message => groupId
+      ? message.group_id === groupId
+      : !message.group_id && !!peerId && (
+        (message.sender_id === profile.id && message.recipient_id === peerId)
+        || (message.sender_id === peerId && message.recipient_id === profile.id)
+      )));
     const loadConversation = async () => {
-      const filter = 'and(sender_id.eq.' + profile.id + ',recipient_id.eq.' + activePerson.id + '),and(sender_id.eq.' + activePerson.id + ',recipient_id.eq.' + profile.id + ')';
-      const { data, error } = await supabaseClient.from('aeroshell_messages')
-        .select('id, sender_id, recipient_id, body, created_at').or(filter)
-        .order('created_at', { ascending: true }).limit(500);
+      let query = supabaseClient.from('aeroshell_messages').select(MESSAGE_FIELDS).order('created_at', { ascending: true }).limit(500);
+      if (groupId) {
+        query = query.eq('group_id', groupId);
+      } else if (peerId) {
+        const filter = 'and(sender_id.eq.' + profile.id + ',recipient_id.eq.' + peerId + '),and(sender_id.eq.' + peerId + ',recipient_id.eq.' + profile.id + ')';
+        query = query.or(filter).is('group_id', null);
+      }
+      const { data, error } = await query;
       if (!mounted) return;
       if (error) {
-        tell('Could not load this conversation. Confirm the message-table policies are installed.', 'error');
+        tell('Could not load this conversation. Confirm the message-table policies and group migration are installed.', 'error');
         return;
       }
-      setMessages(current => mergeConversationMessages(current, (data ?? []) as ChatMessage[], profile.id, activePerson.id));
+      const enriched = await Promise.all(((data ?? []) as ChatMessage[]).map(withSignedAttachment));
+      if (!mounted) return;
+      setMessages(current => mergeScopedMessages(current, enriched, profile.id, peerId, groupId));
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
-    const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-' + activePerson.id, { config: { private: true } })
+    const topic = groupId
+      ? 'aeroshell-conversation-' + profile.id + '-group-' + groupId
+      : 'aeroshell-conversation-' + profile.id + '-' + peerId;
+    const channel = supabaseClient.channel(topic, { config: { private: true } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const incoming = payload.new as ChatMessage;
-        if (!mounted || !isConversationMessage(incoming, profile.id, activePerson.id)) return;
-        setMessages(current => {
-          if (current.some(message => message.id === incoming.id)) return current;
-          return [...current, incoming].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        const inScope = groupId
+          ? incoming.group_id === groupId
+          : !incoming.group_id && !!peerId && (
+            (incoming.sender_id === profile.id && incoming.recipient_id === peerId)
+            || (incoming.sender_id === peerId && incoming.recipient_id === profile.id)
+          );
+        if (!mounted || !inScope) return;
+        void withSignedAttachment(incoming).then(enriched => {
+          if (!mounted) return;
+          setMessages(current => mergeScopedMessages(current, [enriched], profile.id, peerId, groupId));
+          window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
         });
-        window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const deleted = payload.old as { id?: string };
@@ -377,9 +565,57 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }).subscribe();
     return () => {
       mounted = false;
-      void supabaseClient?.removeChannel(channel);
+      void supabaseClient.removeChannel(channel);
     };
-  }, [session, profile, activePerson, pinUnlocked]);
+  }, [session, profile, activePerson, activeGroup, pinUnlocked, withSignedAttachment]);
+
+  useEffect(() => {
+    if (!pinUnlocked || !supabaseClient || !session || !profile || !activeGroup) {
+      setGroupMembers([]);
+      return;
+    }
+    let active = true;
+    const loadRoster = async () => {
+      const { data, error } = await supabaseClient.from('aeroshell_group_members')
+        .select('group_id, user_id, role, added_by, joined_at')
+        .eq('group_id', activeGroup.id).order('joined_at', { ascending: true });
+      if (!active) return;
+      if (error) {
+        tell('Could not load this group’s member list.', 'error');
+        return;
+      }
+      const roster = (data ?? []) as Array<Omit<ChatGroupMember, 'username' | 'avatar_data'>>;
+      const ids = roster.map(item => item.user_id);
+      const { data: profiles, error: profileError } = ids.length
+        ? await supabaseClient.from('aeroshell_profiles').select('id, username, avatar_data').in('id', ids)
+        : { data: [], error: null };
+      if (!active) return;
+      if (profileError) {
+        tell('Could not load group member profiles.', 'error');
+        return;
+      }
+      const profilesById = new Map(((profiles ?? []) as ChatProfile[]).map(item => [item.id, item]));
+      setGroupMembers(roster.flatMap(item => {
+        const member = profilesById.get(item.user_id);
+        return member ? [{ ...item, username: member.username, avatar_data: member.avatar_data ?? null }] : [];
+      }));
+    };
+    void loadRoster();
+    const channel = supabaseClient.channel('aeroshell-master-chat-groups', { config: { private: true } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_group_members' }, () => {
+        void loadRoster();
+        void loadGroups(profile.id);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'aeroshell_groups', filter: 'id=eq.' + activeGroup.id }, () => {
+        void loadGroups(profile.id);
+      }).subscribe();
+    return () => {
+      active = false;
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [session, profile, activeGroup?.id, pinUnlocked, loadGroups]);
+
+
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -390,10 +626,19 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     return people.filter(person => !query || person.username.toLowerCase().includes(query));
   }, [people, peopleQuery]);
 
+  const filteredGroups = useMemo(() => {
+    const query = peopleQuery.trim().toLowerCase();
+    return groups.filter(group => !query || group.name.toLowerCase().includes(query));
+  }, [groups, peopleQuery]);
+
   // Never render cached messages unless both endpoints match the active conversation.
   const conversationMessages = useMemo(
-    () => profile && activePerson ? getConversationMessages(messages, profile.id, activePerson.id) : [],
-    [messages, profile, activePerson],
+    () => profile && activeGroup
+      ? getGroupMessages(messages, activeGroup.id)
+      : profile && activePerson
+        ? getConversationMessages(messages, profile.id, activePerson.id)
+        : [],
+    [messages, profile, activePerson, activeGroup],
   );
 
   const submitAuth = async (event: FormEvent) => {
@@ -445,7 +690,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const sendMessage = async (event?: FormEvent) => {
     event?.preventDefault();
     const body = draft.trim();
-    if (!supabaseClient || !profile || !activePerson || !body || sending) return;
+    if (!supabaseClient || !profile || (!activePerson && !activeGroup) || !body || sending || attachmentBusy) return;
     if (body.length > 2000) {
       tell('Messages can be up to 2,000 characters.', 'error');
       return;
@@ -453,12 +698,19 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setSending(true);
     try {
       const { data, error } = await supabaseClient.from('aeroshell_messages')
-        .insert({ sender_id: profile.id, recipient_id: activePerson.id, body })
-        .select('id, sender_id, recipient_id, body, created_at').single();
-      if (error) tell('Message did not send. Check your connection and database policies.', 'error');
+        .insert({
+          sender_id: profile.id,
+          recipient_id: activeGroup ? null : activePerson!.id,
+          group_id: activeGroup?.id ?? null,
+          body,
+          message_type: 'text',
+        })
+        .select(MESSAGE_FIELDS).single();
+      if (error) tell('Message did not send. Check the connection and group/message policies.', 'error');
       else if (data) {
         setDraft('');
-        setMessages(current => current.some(message => message.id === data.id) ? current : [...current, data as ChatMessage]);
+        const enriched = await withSignedAttachment(data as ChatMessage);
+        setMessages(current => mergeScopedMessages(current, [enriched], profile.id, activePerson?.id ?? null, activeGroup?.id ?? null));
         tell('Message sent.', 'success');
         inputRef.current?.focus();
       }
@@ -466,6 +718,405 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       tell('Message did not send because the connection was interrupted. Please try again.', 'error');
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendAttachment = async (
+    file: File,
+    type: 'file' | 'voice' = 'file',
+    durationMs = 0,
+    target: { person: ChatProfile | null; group: ChatGroup | null } = { person: activePerson, group: activeGroup },
+  ) => {
+    if (!supabaseClient || !profile || (!target.person && !target.group) || attachmentBusy) return;
+    if (isVideoFile(file, type)) {
+      tell('Video attachments are disabled. Send an image, document, text/code file, or voice note instead.', 'error');
+      return;
+    }
+    if (file.size < 1 || file.size > MAX_ATTACHMENT_BYTES) {
+      tell('Files must be smaller than 15 MB.', 'error');
+      return;
+    }
+    if (type === 'voice' && (!file.type.toLowerCase().startsWith('audio/') || durationMs < 1 || durationMs > 120000)) {
+      tell('That voice note could not be prepared. Record a note up to two minutes long and retry.', 'error');
+      return;
+    }
+    setAttachmentBusy(true);
+    setNotice('');
+    const fileName = safeAttachmentName(file.name).slice(0, 180);
+    const mime = file.type || (/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|xml|yml|yaml)$/i.test(fileName) ? 'text/plain' : 'application/octet-stream');
+    const objectName = Date.now() + '-' + crypto.randomUUID() + '-' + fileName;
+    const path = target.group
+      ? 'groups/' + target.group.id + '/' + profile.id + '/' + objectName
+      : 'direct/' + profile.id + '/' + target.person!.id + '/' + objectName;
+    try {
+      const { error: uploadError } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).upload(path, file, {
+        contentType: mime,
+        cacheControl: '3600',
+        upsert: false,
+      });
+      if (uploadError) {
+        throw new Error(/size|limit/i.test(uploadError.message)
+          ? 'This file exceeds the 15 MB attachment limit.'
+          : 'The file could not be uploaded securely. Check the connection and storage policies.');
+      }
+      const row = {
+        sender_id: profile.id,
+        recipient_id: target.group ? null : target.person!.id,
+        group_id: target.group?.id ?? null,
+        body: '',
+        message_type: type,
+        attachment_path: path,
+        attachment_name: fileName,
+        attachment_mime: mime,
+        attachment_size: file.size,
+        voice_duration_ms: type === 'voice' ? Math.max(1, Math.min(120000, Math.round(durationMs))) : null,
+      };
+      const { data, error } = await supabaseClient.from('aeroshell_messages').insert(row).select(MESSAGE_FIELDS).single();
+      if (error || !data) {
+        await supabaseClient.storage.from(ATTACHMENT_BUCKET).remove([path]).catch(() => undefined);
+        throw new Error('The upload finished, but the message could not be saved. Check the group membership and message policies.');
+      }
+      const enriched = await withSignedAttachment(data as ChatMessage);
+      setMessages(current => mergeScopedMessages(
+        current,
+        [enriched],
+        profile.id,
+        target.person?.id ?? null,
+        target.group?.id ?? null,
+      ));
+      tell(type === 'voice' ? 'Voice message sent.' : 'Attachment sent.', 'success');
+    } catch (error) {
+      tell(error instanceof Error ? error.message : 'Could not send this attachment. Please retry.', 'error');
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
+  const handleAttachmentSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = '';
+    if (file) void sendAttachment(file);
+  };
+
+  const sendPastedTextFile = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!pastedFileContent.trim()) {
+      tell('Paste some text or code into the file first.', 'error');
+      return;
+    }
+    const requestedName = safeAttachmentName(pastedFileName.trim() || 'notes.txt');
+    const extension = requestedName.includes('.') ? requestedName.split('.').pop()?.toLowerCase() : '';
+    const mimeByExtension: Record<string, string> = {
+      txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+      js: 'text/javascript', jsx: 'text/javascript', ts: 'text/plain', tsx: 'text/plain',
+      py: 'text/x-python', html: 'text/html', css: 'text/css', sql: 'text/plain', xml: 'application/xml',
+      yaml: 'text/plain', yml: 'text/plain',
+    };
+    const file = new File([pastedFileContent], requestedName, { type: mimeByExtension[extension ?? ''] ?? 'text/plain' });
+    const target = { person: activePerson, group: activeGroup };
+    setPastedFileOpen(false);
+    setPastedFileContent('');
+    void sendAttachment(file, 'file', 0, target);
+  };
+
+  const toggleVoiceRecording = async () => {
+    if (recordingVoice) {
+      voiceRecorderRef.current?.stop();
+      return;
+    }
+    if (voicePreparingRef.current) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      tell('Voice messages are not supported by this browser. Try a current version of Chrome, Edge, or Safari over HTTPS.', 'error');
+      return;
+    }
+    if (!supabaseClient || !profile || (!activePerson && !activeGroup) || attachmentBusy) return;
+    const target = { person: activePerson, group: activeGroup };
+    voicePreparingRef.current = true;
+    setVoicePreparing(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!voicePreparingRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      voiceStartRef.current = Date.now();
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      voiceRecorderRef.current = recorder;
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        tell('Voice recording failed. Check microphone permissions and try again.', 'error');
+        try { recorder.stop(); } catch { /* Recorder can already be stopped. */ }
+      };
+      recorder.onstop = () => {
+        if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+        voiceLimitTimerRef.current = null;
+        stream.getTracks().forEach(track => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        voicePreparingRef.current = false;
+        setVoicePreparing(false);
+        setRecordingVoice(false);
+        const elapsed = Math.min(120000, Math.max(1, Date.now() - voiceStartRef.current));
+        const type = recorder.mimeType || voiceChunksRef.current[0]?.type || 'audio/webm';
+        const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+        const blob = new Blob(voiceChunksRef.current, { type });
+        voiceChunksRef.current = [];
+        if (blob.size > 0 && elapsed >= 500) {
+          const file = new File([blob], 'voice-message-' + Date.now() + '.' + extension, { type: type.split(';')[0] });
+          void sendAttachment(file, 'voice', elapsed, target);
+        } else {
+          tell('That voice note was too short. Hold the microphone a little longer and try again.', 'info');
+        }
+      };
+      recorder.start(200);
+      voicePreparingRef.current = false;
+      setVoicePreparing(false);
+      setRecordingVoice(true);
+      tell('Recording voice message… Tap the microphone again to stop. Maximum duration: 2 minutes.', 'info');
+      voiceLimitTimerRef.current = window.setTimeout(() => {
+        if (voiceRecorderRef.current?.state === 'recording') {
+          voiceRecorderRef.current.stop();
+          tell('Two-minute recording limit reached. Sending your voice note…', 'info');
+        }
+      }, 120000);
+    } catch (error) {
+      voicePreparingRef.current = false;
+      setVoicePreparing(false);
+      voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      voiceChunksRef.current = [];
+      setRecordingVoice(false);
+      tell(error instanceof Error && /denied|permission/i.test(error.message)
+        ? 'Microphone permission was denied. Allow microphone access in your browser settings, then retry.'
+        : 'Could not start voice recording. Check microphone permissions and retry.', 'error');
+    }
+  };
+
+  const cancelVoiceRecording = () => {
+    voicePreparingRef.current = false;
+    setVoicePreparing(false);
+    if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+    voiceLimitTimerRef.current = null;
+    const recorder = voiceRecorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* Recorder may already be stopping. */ }
+      }
+    }
+    voiceRecorderRef.current = null;
+    voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+    voiceStreamRef.current = null;
+    voiceChunksRef.current = [];
+    setRecordingVoice(false);
+  };
+
+  useEffect(() => () => {
+    voicePreparingRef.current = false;
+    if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+    const recorder = voiceRecorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* Ignore during unmount. */ }
+      }
+    }
+    voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+    voiceStreamRef.current = null;
+    voiceRecorderRef.current = null;
+    voiceChunksRef.current = [];
+  }, []);
+
+  const openCreateGroup = () => {
+    setGroupDialogMode('create');
+    setGroupNameDraft('');
+    setGroupAvatarDraft(null);
+    setGroupMemberSelection([]);
+    setGroupError('');
+    setGroupDialogOpen(true);
+    setAccountSettingsOpen(false);
+  };
+
+  const openGroupManagement = () => {
+    if (!activeGroup) return;
+    setGroupDialogMode('manage');
+    setGroupNameDraft(activeGroup.name);
+    setGroupAvatarDraft(activeGroup.avatar_data);
+    setGroupMemberSelection([]);
+    setGroupError('');
+    setGroupDialogOpen(true);
+  };
+
+  const handleGroupAvatarSelection = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const avatar = await compressImageForGroup(file);
+      setGroupAvatarDraft(avatar);
+      setGroupError('');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not prepare this group picture.');
+    }
+  };
+
+  const toggleGroupMemberSelection = (userId: string) => {
+    setGroupMemberSelection(current => current.includes(userId)
+      ? current.filter(id => id !== userId)
+      : current.length < 99 ? [...current, userId] : current);
+  };
+
+  const saveGroupDialog = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!supabaseClient || !profile || groupBusy) return;
+    const name = groupNameDraft.trim();
+    if (!name || name.length > 60) {
+      setGroupError('Group names must contain 1–60 characters.');
+      return;
+    }
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      if (groupDialogMode === 'create') {
+        const { data, error } = await supabaseClient.rpc('aeroshell_create_group', {
+          p_name: name,
+          p_avatar_data: groupAvatarDraft,
+          p_member_ids: groupMemberSelection,
+        });
+        if (error || !data) throw new Error(error?.message ?? 'The group was not created.');
+        const createdId = data as string;
+        const loaded = await loadGroups(profile.id);
+        const created = loaded.find(group => group.id === createdId);
+        setActivePerson(null);
+        setActiveGroup(created ?? null);
+        setMessages([]);
+        setDraft('');
+        setGroupDialogOpen(false);
+        tell('Group created. You are an admin and can add members or promote other admins.', 'success');
+      } else {
+        if (!activeGroup || activeGroup.my_role !== 'admin') throw new Error('Only a group admin can edit group details.');
+        const { data, error } = await supabaseClient.from('aeroshell_groups')
+          .update({ name, avatar_data: groupAvatarDraft, updated_at: new Date().toISOString() })
+          .eq('id', activeGroup.id)
+          .select('id, name, avatar_data, created_by, updated_at').single();
+        if (error || !data) throw new Error('Group details were not saved. Only admins can edit the name and picture.');
+        const loadedGroups = await loadGroups(profile.id);
+        setActiveGroup(loadedGroups.find(group => group.id === data.id) ?? null);
+        setGroupDialogOpen(false);
+        tell('Group details updated.', 'success');
+      }
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not save this group.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const addSelectedGroupMembers = async () => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || !groupMemberSelection.length || groupBusy) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members').insert(
+        groupMemberSelection.map(user_id => ({ group_id: activeGroup.id, user_id, role: 'member', added_by: profile.id })),
+      );
+      if (error) throw new Error('Could not add one or more members. Only admins can invite members to this group.');
+      setGroupMemberSelection([]);
+      await loadGroups(profile.id);
+      setGroupError('');
+      tell('Members added to the group.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not add group members.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const changeGroupMemberRole = async (member: ChatGroupMember) => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || groupBusy) return;
+    const role = member.role === 'admin' ? 'member' : 'admin';
+    setGroupBusy(true);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .update({ role }).eq('group_id', activeGroup.id).eq('user_id', member.user_id);
+      if (error) throw new Error(role === 'member'
+        ? 'Could not remove admin rights. A group must always keep at least one admin.'
+        : 'Could not promote this member to admin.');
+      await loadGroups(profile.id);
+      tell(role === 'admin' ? member.username + ' is now a group admin.' : member.username + ' is now a regular member.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not change this member’s role.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const removeGroupMember = async (member: ChatGroupMember) => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || member.user_id === profile.id || groupBusy) return;
+    if (!window.confirm('Remove @' + member.username + ' from this group?')) return;
+    setGroupBusy(true);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .delete().eq('group_id', activeGroup.id).eq('user_id', member.user_id);
+      if (error) throw new Error('Could not remove this member. Confirm you are an admin.');
+      await loadGroups(profile.id);
+      tell(member.username + ' was removed from the group.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not remove this member.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const leaveActiveGroup = async () => {
+    if (!supabaseClient || !profile || !activeGroup || groupBusy) return;
+    if (!window.confirm('Leave "' + activeGroup.name + '"? You will stop receiving group messages.')) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .delete().eq('group_id', activeGroup.id).eq('user_id', profile.id);
+      if (error) throw new Error('You cannot leave while you are the last admin. Promote another member first.');
+      const groupName = activeGroup.name;
+      setActiveGroup(null);
+      setMessages([]);
+      await loadGroups(profile.id);
+      setGroupDialogOpen(false);
+      tell('You left ' + groupName + '.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not leave this group.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const deleteActiveGroup = async () => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.created_by !== profile.id || groupBusy) return;
+    if (!window.confirm('Permanently delete "' + activeGroup.name + '" and its group messages for every member? This cannot be undone.')) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_groups').delete().eq('id', activeGroup.id);
+      if (error) throw new Error('Only the original group creator can delete the group.');
+      setActiveGroup(null);
+      setMessages([]);
+      await loadGroups(profile.id);
+      setGroupDialogOpen(false);
+      tell('Group deleted.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not delete this group.');
+    } finally {
+      setGroupBusy(false);
     }
   };
 
@@ -511,7 +1162,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         tell('Message was not deleted. Only the original sender can delete their message for everyone.', 'error');
       } else {
         setMessages(current => current.filter(item => item.id !== message.id));
-        tell('Message deleted for everyone.', 'success');
+        // Only the sender's own storage object can be removed; database RLS prevents cross-user deletion.
+        if (message.attachment_path) {
+          const { error: storageError } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).remove([message.attachment_path]);
+          if (storageError) tell('Message deleted for everyone. Its private attachment will be cleaned up separately.', 'info');
+          else tell('Message and its private attachment deleted for everyone.', 'success');
+        } else {
+          tell('Message deleted for everyone.', 'success');
+        }
       }
     } catch {
       tell('Could not delete this message because the connection failed.', 'error');
@@ -674,6 +1332,57 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinNewConfirmValue('');
   };
 
+  const openAccountPasswordSettings = () => {
+    setAccountSettingsOpen(false);
+    setAccountPasswordError('');
+    setAccountCurrentPassword('');
+    setAccountNewPassword('');
+    setAccountConfirmPassword('');
+    setPasswordChangeOpen(true);
+  };
+
+  const changeAccountPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!supabaseClient || !profile || accountPasswordBusy) return;
+    setAccountPasswordError('');
+    if (accountCurrentPassword.length < 8) {
+      setAccountPasswordError('Enter your current account password.');
+      return;
+    }
+    if (accountNewPassword.length < 8) {
+      setAccountPasswordError('Choose a new password with at least 8 characters.');
+      return;
+    }
+    if (accountNewPassword !== accountConfirmPassword) {
+      setAccountPasswordError('The new passwords do not match.');
+      return;
+    }
+    if (accountCurrentPassword === accountNewPassword) {
+      setAccountPasswordError('Choose a new password different from the current password.');
+      return;
+    }
+    setAccountPasswordBusy(true);
+    try {
+      const { error: reauthError } = await supabaseClient.auth.signInWithPassword({
+        email: usernameEmail(profile.username),
+        password: accountCurrentPassword,
+      });
+      if (reauthError) throw new Error('The current account password is incorrect.');
+      const { error } = await supabaseClient.auth.updateUser({ password: accountNewPassword });
+      if (error) throw new Error('The password could not be changed. Please retry.');
+      setPasswordChangeOpen(false);
+      setAccountCurrentPassword('');
+      setAccountNewPassword('');
+      setAccountConfirmPassword('');
+      setPassword('');
+      tell('Your Master Chat system/account password has been changed.', 'success');
+    } catch (error) {
+      setAccountPasswordError(error instanceof Error ? error.message : 'Could not change the account password.');
+    } finally {
+      setAccountPasswordBusy(false);
+    }
+  };
+
   const openDeleteAccount = () => {
     setAccountSettingsOpen(false);
     setDeleteAccountStep(1);
@@ -729,7 +1438,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setSession(null);
       setProfile(null);
       setPeople([]);
+      setGroups([]);
+      setGroupMembers([]);
       setActivePerson(null);
+      setActiveGroup(null);
       setMessages([]);
       setDraft('');
       setPeopleQuery('');
@@ -743,6 +1455,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setConversationFullscreen(false);
       setAccountSettingsOpen(false);
       setPinChangeOpen(false);
+      setPasswordChangeOpen(false);
+      setGroupDialogOpen(false);
       setDeleteAccountStep(0);
       setDeleteAccountText('');
       setNotice('Your Master Chat account and its chat data have been permanently deleted. You can create a new account now.');
@@ -763,7 +1477,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }
       return;
     }
-    if (!iosMode || !activePerson) return;
+    if (!iosMode || (!activePerson && !activeGroup)) return;
     setConversationFullscreen(true);
     const element = chatRootRef.current as (HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }) | null;
     if (!element) return;
@@ -802,15 +1516,16 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }, []);
 
   useEffect(() => {
-    if (iosMode && activePerson && pinUnlocked) return;
+    if (iosMode && (activePerson || activeGroup) && pinUnlocked) return;
     setConversationFullscreen(false);
     if (chatRootRef.current && document.fullscreenElement === chatRootRef.current) {
       nativeChatFullscreenRef.current = false;
       void document.exitFullscreen().catch(() => undefined);
     }
-  }, [iosMode, activePerson, pinUnlocked]);
+  }, [iosMode, activePerson, activeGroup, pinUnlocked]);
 
   const lockApp = () => {
+    if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
     if (!pinRecord) {
       tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
       return;
@@ -821,9 +1536,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinInput('');
     setPinConfirm('');
     setActivePerson(null);
+    setActiveGroup(null);
+    setGroupMembers([]);
     setMessages([]);
     setDraft('');
     setPinChangeOpen(false);
+    setGroupDialogOpen(false);
   };
   lockAppRef.current = lockApp;
 
@@ -862,10 +1580,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const signOut = async () => {
     if (!supabaseClient) return;
+    if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
     const { error } = await supabaseClient.auth.signOut();
     if (error) tell('Could not sign out. Please try again.', 'error');
     else {
       setActivePerson(null);
+      setActiveGroup(null);
+      setGroupMembers([]);
+      setGroups([]);
       setMessages([]);
       setPassword('');
       tell('You have signed out.', 'success');
@@ -954,20 +1676,38 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     </section>;
   }
 
-  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
+  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
     {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/></>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); }}>
+        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
+          if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
+          setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
+        }}>
           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
         </button>)}
         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
+      </div>
+      <div className="master-chat-list-heading master-chat-groups-heading">
+        <Users size={14}/><span>GROUPS</span><small>{groups.length}</small>
+        <button type="button" className="master-chat-create-group-button" onClick={openCreateGroup} title="Create a group" aria-label="Create a group"><UserPlus size={15}/></button>
+      </div>
+      <div className="master-chat-people master-chat-groups-list">
+        {filteredGroups.map(group => <button type="button" className={'master-chat-person '+(activeGroup?.id === group.id ? 'active' : '')} key={group.id} onClick={() => {
+          if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
+          setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(null); setActiveGroup(group); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
+        }}>
+          <span className="master-chat-avatar">{group.avatar_data ? <img src={group.avatar_data} alt=""/> : group.name.slice(0, 1).toUpperCase()}</span>
+          <span className="master-chat-person-meta"><b>{group.name}</b><small>{group.member_count} members · {group.my_role === 'admin' ? 'Admin' : 'Member'}</small></span>
+          {activeGroup?.id === group.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
+        </button>)}
+        {!filteredGroups.length && <div className="master-chat-empty-people master-chat-empty-groups"><Users size={17}/><span>{peopleQuery ? 'No group matches this search.' : 'Create a group to start chatting together.'}</span></div>}
       </div>
       <div className="master-chat-account">
         <span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span>
@@ -979,25 +1719,76 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       </div>
     </aside>
     <div className="master-chat-main">
-      {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
-        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>{iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}</header>
+      {!activePerson && !activeGroup ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose a person for a private chat or create a group to start chatting together.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
+        <header className="master-chat-conversation-header">
+          <button className="master-chat-back" title="Back to conversations" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setActiveGroup(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button>
+          {activeGroup
+            ? <span className="master-chat-avatar">{activeGroup.avatar_data ? <img src={activeGroup.avatar_data} alt=""/> : activeGroup.name.slice(0, 1).toUpperCase()}</span>
+            : <span className="master-chat-avatar">{isValidAvatarData(activePerson?.avatar_data) ? <img src={activePerson?.avatar_data ?? ''} alt=""/> : (activePerson?.username ?? '?').slice(0, 1).toUpperCase()}<i className={activePerson && onlineIds.includes(activePerson.id) ? 'online' : ''}/></span>}
+          <span className="master-chat-conversation-title"><b>{activeGroup?.name ?? activePerson?.username}</b><small>{activeGroup ? activeGroup.member_count + ' members · ' + (activeGroup.my_role === 'admin' ? 'You are an admin' : 'Group conversation') : activePerson && onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span>
+          <span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>
+          {activeGroup && <button type="button" className="master-chat-group-info-button" title="Group info and members" aria-label="Group info and members" onClick={openGroupManagement}><Users size={17}/><span>Group info</span></button>}
+          {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
+        </header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
-        <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
+        {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
+        <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Messages and attachments are restricted by account and group membership policies, but they are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
-          {!conversationMessages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>Only the conversation participants can retrieve messages through the app. Message text is not end-to-end encrypted.</p></div>}
+          {!conversationMessages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>{activeGroup ? 'Say hello to ' + activeGroup.name : 'Say hello to ' + (activePerson?.username ?? 'your contact')}</b><p>{activeGroup ? 'Only current group members can read this group conversation.' : 'Only the conversation participants can retrieve messages through the app.'} Message text is not end-to-end encrypted.</p></div>}
           {conversationMessages.map((message, index) => {
             const mine = message.sender_id === profile.id;
             const previous = conversationMessages[index - 1];
             const grouped = previous?.sender_id === message.sender_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
+            const messageType = message.message_type ?? 'text';
+            const senderProfile = activeGroup ? (mine ? profile : people.find(person => person.id === message.sender_id)) : activePerson;
+            const senderName = senderProfile?.username ?? 'Group member';
+            const avatarData = senderProfile?.avatar_data ?? null;
+            const attachmentUrl = message.attachment_url;
             return <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')} key={message.id}>
-              {!mine && !grouped && <span className="master-chat-tiny-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}</span>}
-              <div className="master-chat-message-wrap"><div className="master-chat-message-content"><div className="master-chat-bubble">{message.body}</div><div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div></div><small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small></div>
+              {!mine && !grouped && <span className="master-chat-tiny-avatar">{isValidAvatarData(avatarData) ? <img src={avatarData ?? ''} alt=""/> : senderName.slice(0, 1).toUpperCase()}</span>}
+              <div className="master-chat-message-wrap">
+                {activeGroup && !mine && <small className="master-chat-group-sender">{senderName}</small>}
+                <div className="master-chat-message-content">
+                  {messageType === 'text'
+                    ? <div className="master-chat-bubble">{message.body}</div>
+                    : messageType === 'voice'
+                      ? <div className="master-chat-attachment-card master-chat-voice-card">
+                          <div className="master-chat-attachment-heading"><span className="master-chat-attachment-icon"><Mic size={17}/></span><span><b>Voice message</b><small>{Math.floor((message.voice_duration_ms ?? 0) / 1000)}s · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB</small></span></div>
+                          {attachmentUrl ? <audio className="master-chat-voice-player" controls preload="metadata" src={attachmentUrl}/> : <span className="master-chat-attachment-unavailable">Preparing secure audio…</span>}
+                        </div>
+                      : <div className="master-chat-attachment-card">
+                          {message.attachment_mime?.startsWith('image/')
+                            ? attachmentUrl
+                              ? <a className="master-chat-image-attachment" href={attachmentUrl} target="_blank" rel="noreferrer" title="Open image"><img src={attachmentUrl} alt={message.attachment_name ?? 'Shared image'} loading="lazy"/></a>
+                              : <span className="master-chat-attachment-unavailable">Preparing secure image…</span>
+                            : <a className="master-chat-file-attachment" href={attachmentUrl ?? undefined} target="_blank" rel="noreferrer" download={message.attachment_name ?? 'attachment'} onClick={event => { if (!attachmentUrl) event.preventDefault(); }}>
+                                <span className="master-chat-attachment-icon"><FileText size={18}/></span>
+                                <span className="master-chat-file-meta"><b>{message.attachment_name ?? 'Attachment'}</b><small>{message.attachment_mime ?? 'File'} · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB{!attachmentUrl ? ' · Preparing…' : ''}</small></span>
+                                <Download size={16}/>
+                              </a>}
+                        </div>}
+                  <div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div>
+                </div>
+                <small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small>
+              </div>
             </div>;
           })}
           <div ref={endRef}/>
         </div>
         <form className="master-chat-composer" onSubmit={event => void sendMessage(event)}>
-          <div className="master-chat-composer-box"><textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={'Message '+activePerson.username+'…'} aria-label="Write a message"/><div className="master-chat-composer-footer"><small>Enter to send · Shift + Enter for a new line · {draft.length}/2000</small><button type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? <span className="master-chat-spinner small"/> : <Send size={16}/>}</button></div></div>
+          <input ref={attachmentInputRef} className="master-chat-file-input" type="file" accept="*/*" aria-label="Choose attachment (videos are not allowed)" onChange={handleAttachmentSelection}/>
+          <div className="master-chat-composer-box">
+            <textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={activeGroup ? 'Message ' + activeGroup.name + '…' : 'Message ' + (activePerson?.username ?? '') + '…'} aria-label="Write a message" disabled={attachmentBusy}/>
+            <div className="master-chat-composer-tools">
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
+              <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy || voicePreparing} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : voicePreparing ? 'Requesting microphone access' : 'Record a voice message'}><Mic size={16}/><span>{voicePreparing ? 'Starting…' : recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
+              {voicePreparing && <span className="master-chat-recording-indicator"><i/> Waiting for microphone…</span>}
+              {recordingVoice && <span className="master-chat-recording-indicator"><i/> Recording · 2 min max</span>}
+              {attachmentBusy && <span className="master-chat-attachment-progress"><span className="master-chat-spinner small"/> Sending…</span>}
+            </div>
+            <div className="master-chat-composer-footer"><small>Enter to send · Shift + Enter for a new line · {draft.length}/2000</small><button type="submit" disabled={!draft.trim() || sending || attachmentBusy} aria-label="Send message">{sending ? <span className="master-chat-spinner small"/> : <Send size={16}/>}</button></div>
+          </div>
         </form>
       </>}
     </div>
@@ -1022,12 +1813,102 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord?'Lock now; a four-digit PIN will be needed to return.':'Set an optional PIN first to enable the app lock.'}</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={!pinRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
           </div>
+          <div className="master-chat-account-setting-row">
+            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>System password</b><small>Change your Master Chat sign-in password. This does not change your Windows or phone password.</small></span></div>
+            <button type="button" className="master-chat-account-action" onClick={openAccountPasswordSettings}>Change <ChevronRight size={15}/></button>
+          </div>
         </div>
         <div className="master-chat-account-modal-actions">
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
         <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> Your app PIN is stored only in this browser. It is separate from your account password and does not encrypt messages.</p>
+      </section>
+    </div>}
+    {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>
+      <form className="master-chat-feature-modal master-chat-account-password-modal" onSubmit={changeAccountPassword} role="dialog" aria-modal="true" aria-labelledby="master-chat-system-password-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close password settings" aria-label="Close password settings" disabled={accountPasswordBusy} onClick={() => setPasswordChangeOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><LockKeyhole size={22}/></span>
+        <p className="eyebrow">ACCOUNT SECURITY</p>
+        <h3 id="master-chat-system-password-title">Change system password</h3>
+        <p>This changes your Master Chat account password used to sign in. A website cannot change or read your Windows, Android, or device unlock password.</p>
+        <label>Current password<input autoComplete="current-password" type="password" minLength={8} value={accountCurrentPassword} onChange={event=>setAccountCurrentPassword(event.target.value)} required/></label>
+        <label>New password<input autoComplete="new-password" type="password" minLength={8} value={accountNewPassword} onChange={event=>setAccountNewPassword(event.target.value)} required/></label>
+        <label>Confirm new password<input autoComplete="new-password" type="password" minLength={8} value={accountConfirmPassword} onChange={event=>setAccountConfirmPassword(event.target.value)} required/></label>
+        {accountPasswordError && <p className="master-chat-notice error" role="alert">{accountPasswordError}</p>}
+        <div className="master-chat-feature-modal-actions"><button className="master-chat-primary" type="submit" disabled={accountPasswordBusy}>{accountPasswordBusy?'Changing password…':'Update password'}</button><button className="secondary-button" type="button" disabled={accountPasswordBusy} onClick={()=>setPasswordChangeOpen(false)}>Cancel</button></div>
+      </form>
+    </div>}
+    {pastedFileOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget)setPastedFileOpen(false);}}>
+      <form className="master-chat-feature-modal master-chat-pasted-file-modal" onSubmit={sendPastedTextFile} role="dialog" aria-modal="true" aria-labelledby="master-chat-pasted-file-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close pasted file" aria-label="Close pasted file" onClick={()=>setPastedFileOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><FileText size={22}/></span>
+        <p className="eyebrow">ATTACHMENT</p>
+        <h3 id="master-chat-pasted-file-title">Send pasted text or code</h3>
+        <p>Paste text or source code, give the file a name, and send it as a private attachment. Videos are not accepted.</p>
+        <label>File name<input value={pastedFileName} maxLength={180} onChange={event=>setPastedFileName(event.target.value)} placeholder="notes.txt" required/></label>
+        <label>Text or code<textarea className="master-chat-code-textarea" rows={9} value={pastedFileContent} onChange={event=>setPastedFileContent(event.target.value)} placeholder="Paste your notes, code, configuration, or text here…" required/></label>
+        <div className="master-chat-feature-modal-actions"><button className="master-chat-primary" type="submit" disabled={!pastedFileContent.trim() || attachmentBusy}>Send file</button><button className="secondary-button" type="button" onClick={()=>setPastedFileOpen(false)}>Cancel</button></div>
+      </form>
+    </div>}
+    {groupDialogOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !groupBusy)setGroupDialogOpen(false);}}>
+      <section className="master-chat-feature-modal master-chat-group-modal" role="dialog" aria-modal="true" aria-labelledby="master-chat-group-dialog-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close group details" aria-label="Close group details" disabled={groupBusy} onClick={()=>setGroupDialogOpen(false)}><X size={18}/></button>
+        <div className="master-chat-group-dialog-heading">
+          <span className="master-chat-group-avatar-preview">{groupAvatarDraft ? <img src={groupAvatarDraft} alt="Group picture preview"/> : <Users size={22}/>}</span>
+          <div><p className="eyebrow">MASTER CHAT · GROUPS</p><h3 id="master-chat-group-dialog-title">{groupDialogMode==='create'?'Create a group':'Group info & members'}</h3><p>{groupDialogMode==='create'?'Choose a name, picture, and first members.':'Manage the group, membership, and admin roles.'}</p></div>
+        </div>
+        <form onSubmit={saveGroupDialog}>
+          <label>Group name<input value={groupNameDraft} maxLength={60} disabled={groupDialogMode==='manage' && activeGroup?.my_role!=='admin'} onChange={event=>setGroupNameDraft(event.target.value)} placeholder="e.g. Weekend crew" required/></label>
+          <div className="master-chat-group-picture-row">
+            <span><b>Group picture</b><small>Optional · compressed before upload</small></span>
+            <label className="master-chat-account-photo-pick"><span>{groupAvatarDraft?'Change picture':'Add picture'}</span><input type="file" accept="image/*" aria-label="Choose group picture" disabled={groupBusy || (groupDialogMode==='manage' && activeGroup?.my_role!=='admin')} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void handleGroupAvatarSelection(file);}}/></label>
+            {groupAvatarDraft && <button type="button" className="master-chat-account-remove-photo" title="Remove group picture" onClick={()=>setGroupAvatarDraft(null)} disabled={groupBusy || (groupDialogMode==='manage' && activeGroup?.my_role!=='admin')}><Trash2 size={15}/></button>}
+          </div>
+          {groupDialogMode==='create' ? <>
+            <div className="master-chat-group-section-heading"><b>Add members</b><small>{groupMemberSelection.length} selected · up to 100 members total</small></div>
+            <div className="master-chat-group-select-list">
+              {people.map(person=><label className="master-chat-group-select-member" key={person.id}>
+                <input type="checkbox" checked={groupMemberSelection.includes(person.id)} onChange={()=>toggleGroupMemberSelection(person.id)} disabled={groupBusy || (!groupMemberSelection.includes(person.id) && groupMemberSelection.length>=99)}/>
+                <span className="master-chat-group-mini-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data ?? ''} alt=""/> : person.username.slice(0,1).toUpperCase()}</span><span><b>{person.username}</b><small>Master Chat member</small></span>
+              </label>)}
+              {!people.length && <p className="master-chat-group-empty">Other members will appear here when they create Master Chat accounts.</p>}
+            </div>
+          </> : <>
+            <div className="master-chat-group-section-heading"><b>Members · {groupMembers.length}</b><small>{activeGroup?.my_role==='admin'?'You can promote members to admin.':'Only admins can manage this group.'}</small></div>
+            <div className="master-chat-group-roster">
+              {groupMembers.map(member=><div className="master-chat-group-roster-row" key={member.user_id}>
+                <span className="master-chat-group-mini-avatar">{isValidAvatarData(member.avatar_data) ? <img src={member.avatar_data ?? ''} alt=""/> : member.username.slice(0,1).toUpperCase()}</span>
+                <span className="master-chat-group-roster-name"><b>{member.username}{member.user_id===profile.id?' (you)':''}</b><small>{member.role==='admin'?'Group admin':'Member'}</small></span>
+                {activeGroup?.my_role==='admin' && <div className="master-chat-group-roster-actions">
+                  <button type="button" className="master-chat-group-small-action" disabled={groupBusy} onClick={()=>void changeGroupMemberRole(member)}>{member.role==='admin'?'Demote':'Make admin'}</button>
+                  {member.user_id!==profile.id && <button type="button" className="master-chat-group-remove-member" title={'Remove '+member.username} aria-label={'Remove '+member.username} disabled={groupBusy} onClick={()=>void removeGroupMember(member)}><X size={14}/></button>}
+                </div>}
+              </div>)}
+            </div>
+            {activeGroup?.my_role==='admin' && <>
+              <div className="master-chat-group-section-heading"><b>Add more members</b><small>Only people not already in the group</small></div>
+              <div className="master-chat-group-select-list">
+                {people.filter(person=>!groupMembers.some(member=>member.user_id===person.id)).map(person=><label className="master-chat-group-select-member" key={person.id}>
+                  <input type="checkbox" checked={groupMemberSelection.includes(person.id)} onChange={()=>toggleGroupMemberSelection(person.id)} disabled={groupBusy || (!groupMemberSelection.includes(person.id) && groupMemberSelection.length>=99-groupMembers.length)}/>
+                  <span className="master-chat-group-mini-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data ?? ''} alt=""/> : person.username.slice(0,1).toUpperCase()}</span><span><b>{person.username}</b><small>Available to add</small></span>
+                </label>)}
+              </div>
+              <button type="button" className="master-chat-group-add-members" disabled={groupBusy || !groupMemberSelection.length} onClick={()=>void addSelectedGroupMembers()}>{groupBusy?'Working…':'Add selected members'}</button>
+            </>}
+          </>}
+          {groupError && <p className="master-chat-notice error" role="alert">{groupError}</p>}
+          <div className="master-chat-feature-modal-actions">
+            {groupDialogMode==='create'
+              ? <button type="submit" className="master-chat-primary" disabled={groupBusy || !groupNameDraft.trim()}>{groupBusy?'Creating…':'Create group'}</button>
+              : activeGroup?.my_role==='admin'
+                ? <button type="submit" className="master-chat-primary" disabled={groupBusy || !groupNameDraft.trim()}>{groupBusy?'Saving…':'Save group details'}</button>
+                : null}
+            {groupDialogMode==='manage' && <button type="button" className="secondary-button" disabled={groupBusy} onClick={()=>void leaveActiveGroup()}>Leave group</button>}
+            {groupDialogMode==='manage' && activeGroup?.created_by===profile.id && <button type="button" className="master-chat-delete-cancel" disabled={groupBusy} onClick={()=>void deleteActiveGroup()}>Delete group</button>}
+            <button type="button" className="secondary-button" disabled={groupBusy} onClick={()=>setGroupDialogOpen(false)}>Close</button>
+          </div>
+        </form>
       </section>
     </div>}
     {deleteAccountStep > 0 && <div className="master-chat-delete-account-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)cancelDeleteAccount();}}>
