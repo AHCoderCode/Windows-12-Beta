@@ -1747,12 +1747,102 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord?'Lock now; a four-digit PIN will be needed to return.':'Set an optional PIN first to enable the app lock.'}</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={!pinRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
           </div>
+          <div className="master-chat-account-setting-row">
+            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>System password</b><small>Change your Master Chat sign-in password. This does not change your Windows or phone password.</small></span></div>
+            <button type="button" className="master-chat-account-action" onClick={openAccountPasswordSettings}>Change <ChevronRight size={15}/></button>
+          </div>
         </div>
         <div className="master-chat-account-modal-actions">
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
         <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> Your app PIN is stored only in this browser. It is separate from your account password and does not encrypt messages.</p>
+      </section>
+    </div>}
+    {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>
+      <form className="master-chat-feature-modal master-chat-account-password-modal" onSubmit={changeAccountPassword} role="dialog" aria-modal="true" aria-labelledby="master-chat-system-password-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close password settings" aria-label="Close password settings" disabled={accountPasswordBusy} onClick={() => setPasswordChangeOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><LockKeyhole size={22}/></span>
+        <p className="eyebrow">ACCOUNT SECURITY</p>
+        <h3 id="master-chat-system-password-title">Change system password</h3>
+        <p>This changes your Master Chat account password used to sign in. A website cannot change or read your Windows, Android, or device unlock password.</p>
+        <label>Current password<input autoComplete="current-password" type="password" minLength={8} value={accountCurrentPassword} onChange={event=>setAccountCurrentPassword(event.target.value)} required/></label>
+        <label>New password<input autoComplete="new-password" type="password" minLength={8} value={accountNewPassword} onChange={event=>setAccountNewPassword(event.target.value)} required/></label>
+        <label>Confirm new password<input autoComplete="new-password" type="password" minLength={8} value={accountConfirmPassword} onChange={event=>setAccountConfirmPassword(event.target.value)} required/></label>
+        {accountPasswordError && <p className="master-chat-notice error" role="alert">{accountPasswordError}</p>}
+        <div className="master-chat-feature-modal-actions"><button className="master-chat-primary" type="submit" disabled={accountPasswordBusy}>{accountPasswordBusy?'Changing password…':'Update password'}</button><button className="secondary-button" type="button" disabled={accountPasswordBusy} onClick={()=>setPasswordChangeOpen(false)}>Cancel</button></div>
+      </form>
+    </div>}
+    {pastedFileOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget)setPastedFileOpen(false);}}>
+      <form className="master-chat-feature-modal master-chat-pasted-file-modal" onSubmit={sendPastedTextFile} role="dialog" aria-modal="true" aria-labelledby="master-chat-pasted-file-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close pasted file" aria-label="Close pasted file" onClick={()=>setPastedFileOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><FileText size={22}/></span>
+        <p className="eyebrow">ATTACHMENT</p>
+        <h3 id="master-chat-pasted-file-title">Send pasted text or code</h3>
+        <p>Paste text or source code, give the file a name, and send it as a private attachment. Videos are not accepted.</p>
+        <label>File name<input value={pastedFileName} maxLength={180} onChange={event=>setPastedFileName(event.target.value)} placeholder="notes.txt" required/></label>
+        <label>Text or code<textarea className="master-chat-code-textarea" rows={9} value={pastedFileContent} onChange={event=>setPastedFileContent(event.target.value)} placeholder="Paste your notes, code, configuration, or text here…" required/></label>
+        <div className="master-chat-feature-modal-actions"><button className="master-chat-primary" type="submit" disabled={!pastedFileContent.trim() || attachmentBusy}>Send file</button><button className="secondary-button" type="button" onClick={()=>setPastedFileOpen(false)}>Cancel</button></div>
+      </form>
+    </div>}
+    {groupDialogOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !groupBusy)setGroupDialogOpen(false);}}>
+      <section className="master-chat-feature-modal master-chat-group-modal" role="dialog" aria-modal="true" aria-labelledby="master-chat-group-dialog-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close group details" aria-label="Close group details" disabled={groupBusy} onClick={()=>setGroupDialogOpen(false)}><X size={18}/></button>
+        <div className="master-chat-group-dialog-heading">
+          <span className="master-chat-group-avatar-preview">{groupAvatarDraft ? <img src={groupAvatarDraft} alt="Group picture preview"/> : <Users size={22}/>}</span>
+          <div><p className="eyebrow">MASTER CHAT · GROUPS</p><h3 id="master-chat-group-dialog-title">{groupDialogMode==='create'?'Create a group':'Group info & members'}</h3><p>{groupDialogMode==='create'?'Choose a name, picture, and first members.':'Manage the group, membership, and admin roles.'}</p></div>
+        </div>
+        <form onSubmit={saveGroupDialog}>
+          <label>Group name<input value={groupNameDraft} maxLength={60} disabled={groupDialogMode==='manage' && activeGroup?.my_role!=='admin'} onChange={event=>setGroupNameDraft(event.target.value)} placeholder="e.g. Weekend crew" required/></label>
+          <div className="master-chat-group-picture-row">
+            <span><b>Group picture</b><small>Optional · compressed before upload</small></span>
+            <label className="master-chat-account-photo-pick"><span>{groupAvatarDraft?'Change picture':'Add picture'}</span><input type="file" accept="image/*" aria-label="Choose group picture" disabled={groupBusy || (groupDialogMode==='manage' && activeGroup?.my_role!=='admin')} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void handleGroupAvatarSelection(file);}}/></label>
+            {groupAvatarDraft && <button type="button" className="master-chat-account-remove-photo" title="Remove group picture" onClick={()=>setGroupAvatarDraft(null)} disabled={groupBusy || (groupDialogMode==='manage' && activeGroup?.my_role!=='admin')}><Trash2 size={15}/></button>}
+          </div>
+          {groupDialogMode==='create' ? <>
+            <div className="master-chat-group-section-heading"><b>Add members</b><small>{groupMemberSelection.length} selected · up to 100 members total</small></div>
+            <div className="master-chat-group-select-list">
+              {people.map(person=><label className="master-chat-group-select-member" key={person.id}>
+                <input type="checkbox" checked={groupMemberSelection.includes(person.id)} onChange={()=>toggleGroupMemberSelection(person.id)} disabled={groupBusy || (!groupMemberSelection.includes(person.id) && groupMemberSelection.length>=99)}/>
+                <span className="master-chat-group-mini-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data ?? ''} alt=""/> : person.username.slice(0,1).toUpperCase()}</span><span><b>{person.username}</b><small>Master Chat member</small></span>
+              </label>)}
+              {!people.length && <p className="master-chat-group-empty">Other members will appear here when they create Master Chat accounts.</p>}
+            </div>
+          </> : <>
+            <div className="master-chat-group-section-heading"><b>Members · {groupMembers.length}</b><small>{activeGroup?.my_role==='admin'?'You can promote members to admin.':'Only admins can manage this group.'}</small></div>
+            <div className="master-chat-group-roster">
+              {groupMembers.map(member=><div className="master-chat-group-roster-row" key={member.user_id}>
+                <span className="master-chat-group-mini-avatar">{isValidAvatarData(member.avatar_data) ? <img src={member.avatar_data ?? ''} alt=""/> : member.username.slice(0,1).toUpperCase()}</span>
+                <span className="master-chat-group-roster-name"><b>{member.username}{member.user_id===profile.id?' (you)':''}</b><small>{member.role==='admin'?'Group admin':'Member'}</small></span>
+                {activeGroup?.my_role==='admin' && <div className="master-chat-group-roster-actions">
+                  <button type="button" className="master-chat-group-small-action" disabled={groupBusy} onClick={()=>void changeGroupMemberRole(member)}>{member.role==='admin'?'Demote':'Make admin'}</button>
+                  {member.user_id!==profile.id && <button type="button" className="master-chat-group-remove-member" title={'Remove '+member.username} aria-label={'Remove '+member.username} disabled={groupBusy} onClick={()=>void removeGroupMember(member)}><X size={14}/></button>}
+                </div>}
+              </div>)}
+            </div>
+            {activeGroup?.my_role==='admin' && <>
+              <div className="master-chat-group-section-heading"><b>Add more members</b><small>Only people not already in the group</small></div>
+              <div className="master-chat-group-select-list">
+                {people.filter(person=>!groupMembers.some(member=>member.user_id===person.id)).map(person=><label className="master-chat-group-select-member" key={person.id}>
+                  <input type="checkbox" checked={groupMemberSelection.includes(person.id)} onChange={()=>toggleGroupMemberSelection(person.id)} disabled={groupBusy || (!groupMemberSelection.includes(person.id) && groupMemberSelection.length>=99-groupMembers.length)}/>
+                  <span className="master-chat-group-mini-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data ?? ''} alt=""/> : person.username.slice(0,1).toUpperCase()}</span><span><b>{person.username}</b><small>Available to add</small></span>
+                </label>)}
+              </div>
+              <button type="button" className="master-chat-group-add-members" disabled={groupBusy || !groupMemberSelection.length} onClick={()=>void addSelectedGroupMembers()}>{groupBusy?'Working…':'Add selected members'}</button>
+            </>}
+          </>}
+          {groupError && <p className="master-chat-notice error" role="alert">{groupError}</p>}
+          <div className="master-chat-feature-modal-actions">
+            {groupDialogMode==='create'
+              ? <button type="submit" className="master-chat-primary" disabled={groupBusy || !groupNameDraft.trim()}>{groupBusy?'Creating…':'Create group'}</button>
+              : activeGroup?.my_role==='admin'
+                ? <button type="submit" className="master-chat-primary" disabled={groupBusy || !groupNameDraft.trim()}>{groupBusy?'Saving…':'Save group details'}</button>
+                : null}
+            {groupDialogMode==='manage' && <button type="button" className="secondary-button" disabled={groupBusy} onClick={()=>void leaveActiveGroup()}>Leave group</button>}
+            {groupDialogMode==='manage' && activeGroup?.created_by===profile.id && <button type="button" className="master-chat-delete-cancel" disabled={groupBusy} onClick={()=>void deleteActiveGroup()}>Delete group</button>}
+            <button type="button" className="secondary-button" disabled={groupBusy} onClick={()=>setGroupDialogOpen(false)}>Close</button>
+          </div>
+        </form>
       </section>
     </div>}
     {deleteAccountStep > 0 && <div className="master-chat-delete-account-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)cancelDeleteAccount();}}>
