@@ -1,13 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
 type MessageType = 'text' | 'file' | 'voice';
+type ScheduledChatMessage = { id: string; user_id: string; recipient_id: string | null; group_id: string | null; body: string; send_at: string };
+const SCHEDULED_CHAT_MESSAGES_KEY = 'aeroshell.master-chat.scheduled-messages.v1';
+const scheduledWorkerInFlight = new Set<string>();
+
+function readScheduledChatMessages(): ScheduledChatMessage[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SCHEDULED_CHAT_MESSAGES_KEY) ?? '[]');
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is ScheduledChatMessage => !!item && typeof item === 'object' &&
+      typeof item.id === 'string' && typeof item.user_id === 'string' &&
+      (item.recipient_id === null || typeof item.recipient_id === 'string') &&
+      (item.group_id === null || typeof item.group_id === 'string') &&
+      typeof item.body === 'string' && item.body.trim().length > 0 &&
+      typeof item.send_at === 'string' && Number.isFinite(Date.parse(item.send_at)));
+  } catch { return []; }
+}
+
+function writeScheduledChatMessages(items: ScheduledChatMessage[]) {
+  try { localStorage.setItem(SCHEDULED_CHAT_MESSAGES_KEY, JSON.stringify(items)); } catch { /* A scheduled message cannot be queued if local storage is blocked. */ }
+}
+
+function asLocalDateTimeInput(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 type ChatMessage = {
   id: string;
   sender_id: string;
@@ -171,6 +196,39 @@ const supabaseClient = (() => {
   }
 })();
 
+export async function processMasterChatScheduledMessages() {
+  if (!supabaseClient || typeof window === 'undefined') return;
+  let userId = '';
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error || !data.session?.user.id) return;
+    userId = data.session.user.id;
+  } catch { return; }
+  if (!userId) return;
+  const due = readScheduledChatMessages().filter(item => item.user_id === userId && Date.parse(item.send_at) <= Date.now());
+  for (const item of due) {
+    if (scheduledWorkerInFlight.has(item.id)) continue;
+    scheduledWorkerInFlight.add(item.id);
+    try {
+      const { data, error } = await supabaseClient.from('aeroshell_messages').insert({
+        sender_id: item.user_id,
+        recipient_id: item.recipient_id,
+        group_id: item.group_id,
+        body: item.body,
+        message_type: 'text',
+      }).select('id').single();
+      if (error || !data) throw error ?? new Error('The message was not saved by the server.');
+      const remaining = readScheduledChatMessages().filter(queued => queued.id !== item.id);
+      writeScheduledChatMessages(remaining);
+      window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-sent', { detail: { id: item.id, user_id: item.user_id } }));
+    } catch {
+      window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-failed', { detail: { id: item.id, user_id: item.user_id, message: 'A scheduled message could not send. It remains queued and will be retried while AeroShell is open and you are signed in.' } }));
+    } finally {
+      scheduledWorkerInFlight.delete(item.id);
+    }
+  }
+}
+
 const validUsername = (value: string) => /^[a-zA-Z0-9_]{3,20}$/.test(value);
 const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell.invalid';
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -222,6 +280,11 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [accountPasswordBusy, setAccountPasswordBusy] = useState(false);
   const [accountPasswordError, setAccountPasswordError] = useState('');
   const [draft, setDraft] = useState('');
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState(() => asLocalDateTimeInput(new Date(Date.now() + 5 * 60 * 1000)));
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledChatMessage[]>(() => readScheduledChatMessages());
+  const scheduledProcessingRef = useRef(new Set<string>());
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
@@ -263,6 +326,29 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setNotice(text);
     setNoticeKind(kind);
   };
+
+  useEffect(() => {
+    writeScheduledChatMessages(scheduledMessages);
+  }, [scheduledMessages]);
+
+  useEffect(() => {
+    const onSent = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; user_id?: string }>).detail;
+      if (!detail?.id) return;
+      setScheduledMessages(current => current.filter(item => item.id !== detail.id));
+      if (detail.user_id === profile?.id) tell('Scheduled message sent.', 'success');
+    };
+    const onFailed = (event: Event) => {
+      const detail = (event as CustomEvent<{ user_id?: string; message?: string }>).detail;
+      if (detail?.user_id === profile?.id && detail.message) tell(detail.message, 'error');
+    };
+    window.addEventListener('aeroshell-master-chat-scheduled-sent', onSent);
+    window.addEventListener('aeroshell-master-chat-scheduled-failed', onFailed);
+    return () => {
+      window.removeEventListener('aeroshell-master-chat-scheduled-sent', onSent);
+      window.removeEventListener('aeroshell-master-chat-scheduled-failed', onFailed);
+    };
+  }, [profile?.id]);
 
   const loadProfile = useCallback(async (userId: string) => {
     if (!supabaseClient) return;
@@ -719,6 +805,69 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     } finally {
       setSending(false);
     }
+  };
+
+  const openScheduleDialog = () => {
+    if (!profile || (!activePerson && !activeGroup)) {
+      tell('Open an individual or group conversation before scheduling a message.', 'info');
+      return;
+    }
+    if (!draft.trim()) {
+      tell('Write a message first, then choose Schedule message.', 'info');
+      inputRef.current?.focus();
+      return;
+    }
+    setScheduleAt(asLocalDateTimeInput(new Date(Date.now() + 5 * 60 * 1000)));
+    setScheduleError('');
+    setScheduleDialogOpen(true);
+  };
+
+  const submitScheduledMessage = (event: FormEvent) => {
+    event.preventDefault();
+    if (!profile || (!activePerson && !activeGroup)) {
+      setScheduleError('Choose a conversation first.');
+      return;
+    }
+    const body = draft.trim();
+    if (!body) {
+      setScheduleError('Write a message to schedule.');
+      return;
+    }
+    if (body.length > 2000) {
+      setScheduleError('Messages can be up to 2,000 characters.');
+      return;
+    }
+    const scheduledTime = new Date(scheduleAt);
+    if (!Number.isFinite(scheduledTime.getTime()) || scheduledTime.getTime() < Date.now() + 30000) {
+      setScheduleError('Choose a time at least 30 seconds in the future.');
+      return;
+    }
+    const item: ScheduledChatMessage = {
+      id: crypto.randomUUID(),
+      user_id: profile.id,
+      recipient_id: activeGroup ? null : activePerson!.id,
+      group_id: activeGroup?.id ?? null,
+      body,
+      send_at: scheduledTime.toISOString(),
+    };
+    try {
+      const next = [...readScheduledChatMessages().filter(existing => existing.id !== item.id), item].sort((left, right) => Date.parse(left.send_at) - Date.parse(right.send_at));
+      writeScheduledChatMessages(next);
+      setScheduledMessages(next);
+      setDraft('');
+      setScheduleDialogOpen(false);
+      setScheduleError('');
+      tell('Message scheduled for ' + scheduledTime.toLocaleString() + '.', 'success');
+    } catch {
+      setScheduleError('Could not save this scheduled message in this browser.');
+    }
+  };
+
+  const cancelScheduledMessage = (id: string) => {
+    const next = readScheduledChatMessages().filter(item => item.id !== id);
+    writeScheduledChatMessages(next);
+    setScheduledMessages(next);
+    tell('Scheduled message cancelled.', 'info');
   };
 
   const sendAttachment = async (
@@ -1782,6 +1931,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-composer-tools">
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing || !draft.trim()} onClick={openScheduleDialog} title="Schedule this text message"><Clock3 size={16}/><span>Schedule</span></button>
               <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy || voicePreparing} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : voicePreparing ? 'Requesting microphone access' : 'Record a voice message'}><Mic size={16}/><span>{voicePreparing ? 'Starting…' : recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
               {voicePreparing && <span className="master-chat-recording-indicator"><i/> Waiting for microphone…</span>}
               {recordingVoice && <span className="master-chat-recording-indicator"><i/> Recording · 2 min max</span>}
@@ -1849,6 +1999,21 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         <label>File name<input value={pastedFileName} maxLength={180} onChange={event=>setPastedFileName(event.target.value)} placeholder="notes.txt" required/></label>
         <label>Text or code<textarea className="master-chat-code-textarea" rows={9} value={pastedFileContent} onChange={event=>setPastedFileContent(event.target.value)} placeholder="Paste your notes, code, configuration, or text here…" required/></label>
         <div className="master-chat-feature-modal-actions"><button className="master-chat-primary" type="submit" disabled={!pastedFileContent.trim() || attachmentBusy}>Send file</button><button className="secondary-button" type="button" onClick={()=>setPastedFileOpen(false)}>Cancel</button></div>
+      </form>
+    </div>}
+    {scheduleDialogOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setScheduleDialogOpen(false);}}>
+      <form className="master-chat-feature-modal master-chat-schedule-modal" onSubmit={submitScheduledMessage} role="dialog" aria-modal="true" aria-labelledby="master-chat-schedule-title">
+        <button type="button" className="master-chat-account-modal-close" title="Close scheduler" aria-label="Close scheduler" onClick={()=>setScheduleDialogOpen(false)}><X size={18}/></button>
+        <span className="master-chat-pin-icon"><Clock3 size={22}/></span>
+        <p className="eyebrow">MASTER CHAT · SCHEDULE</p>
+        <h3 id="master-chat-schedule-title">Schedule message</h3>
+        <p>To: <b>{activeGroup ? activeGroup.name + ' (group)' : '@' + (activePerson?.username ?? '')}</b></p>
+        <div className="master-chat-scheduled-preview"><small>Message preview</small><p>{draft.trim()}</p></div>
+        <label>Send date and time<input type="datetime-local" value={scheduleAt} min={asLocalDateTimeInput(new Date(Date.now()+30000))} onChange={event=>setScheduleAt(event.target.value)} required/></label>
+        {scheduleError && <p className="master-chat-notice error" role="alert">{scheduleError}</p>}
+        <div className="master-chat-feature-modal-actions"><button type="submit" className="master-chat-primary">Schedule message</button><button type="button" className="secondary-button" onClick={()=>setScheduleDialogOpen(false)}>Cancel</button></div>
+        <section className="master-chat-scheduled-list"><b>Pending scheduled messages for this conversation</b>{scheduledMessages.filter(item=>item.user_id===profile?.id && (activeGroup ? item.group_id===activeGroup.id : !item.group_id && item.recipient_id===activePerson?.id)).length ? scheduledMessages.filter(item=>item.user_id===profile?.id && (activeGroup ? item.group_id===activeGroup.id : !item.group_id && item.recipient_id===activePerson?.id)).sort((a,b)=>Date.parse(a.send_at)-Date.parse(b.send_at)).map(item=><div className="master-chat-scheduled-item" key={item.id}><span><small>{new Date(item.send_at).toLocaleString()}</small><span>{item.body}</span></span><button type="button" className="master-chat-scheduled-cancel" onClick={()=>cancelScheduledMessage(item.id)}>Cancel</button></div>) : <small>No messages scheduled for this conversation.</small>}</section>
+        <p className="hint">The schedule is stored on this device. Keep AeroShell open and signed in for on-time delivery. If the site is closed or offline at the selected time, it will attempt to send the overdue message when you return and sign in.</p>
       </form>
     </div>}
     {groupDialogOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !groupBusy)setGroupDialogOpen(false);}}>
