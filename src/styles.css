@@ -1363,8 +1363,8 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .master-chat-empty-people{min-width:0;padding:24px 12px}
  .master-chat-account{padding:10px 12px}.master-chat-account .master-chat-avatar{width:32px;height:32px;flex-basis:32px}
  .master-chat-main{grid-row:1;display:none}
- .master-chat-app.master-chat-has-active-person .master-chat-sidebar{display:none}
- .master-chat-app.master-chat-has-active-person .master-chat-main{display:flex;min-height:0}
+ .master-chat-app.master-chat-has-active-person .master-chat-sidebar,.master-chat-app.master-chat-has-active-group .master-chat-sidebar{display:none}
+ .master-chat-app.master-chat-has-active-person .master-chat-main,.master-chat-app.master-chat-has-active-group .master-chat-main{display:flex;min-height:0}
  .master-chat-connection{font-size:8px}
  .master-chat-conversation-header{padding:9px 94px 9px 9px;gap:7px}
  .master-chat-messages{padding:12px 9px}.master-chat-message-row{max-width:96%}
@@ -1997,6 +1997,10 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .master-chat-attachment-card{max-width:78vw}
 }
 @media(prefers-reduced-motion:reduce){.master-chat-recording-indicator i{animation:none}}
+
+.master-chat-pin-passkey-button{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:42px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,var(--surface));color:var(--text);font-size:11px;font-weight:800}
+.master-chat-pin-passkey-button:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 15%,var(--surface))}
+.master-chat-pin-passkey-button:disabled{opacity:.6;cursor:wait}
 
 /* Scheduled message dialog */
 .master-chat-schedule-modal{width:min(540px,calc(100vw - 28px));max-height:min(88dvh,820px);overflow:auto;overscroll-behavior:contain}
