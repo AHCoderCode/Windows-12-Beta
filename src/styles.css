@@ -1997,3 +1997,28 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
  .master-chat-attachment-card{max-width:78vw}
 }
 @media(prefers-reduced-motion:reduce){.master-chat-recording-indicator i{animation:none}}
+
+/* Master Chat app-only passkey and local smart-emoji controls */
+.master-chat-passkey-button{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:43px;margin-top:9px;padding:10px 13px;border:1px solid color-mix(in srgb,var(--accent) 55%,transparent);border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text);font-weight:650}
+.master-chat-passkey-button:hover{background:color-mix(in srgb,var(--accent) 23%,transparent)}
+.master-chat-passkey-button:disabled{opacity:.55;cursor:wait}
+.master-chat-passkey-setting{align-items:flex-start}
+.master-chat-passkey-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.master-chat-emoji-panel{display:flex;flex-direction:column;gap:8px;padding:10px 11px;border-top:1px solid var(--border);background:var(--soft)}
+.master-chat-emoji-panel-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.master-chat-emoji-panel-heading b{font-size:11px}
+.master-chat-emoji-panel-heading small{font-size:10px;color:var(--muted)}
+.master-chat-emoji-list{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.master-chat-emoji-list button{display:grid;place-items:center;min-width:36px;min-height:36px;padding:4px;border:1px solid var(--border);border-radius:9px;background:var(--surface);font-size:20px}
+.master-chat-emoji-list button:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+.pinned-app-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.pinned-app-setting{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--soft);cursor:pointer}
+.pinned-app-setting-info{display:flex;align-items:center;gap:9px;min-width:0}
+.pinned-app-setting-info>span:last-child{display:flex;flex-direction:column;gap:4px;min-width:0}
+.pinned-app-setting-info b{font-size:11px;font-weight:650}
+.pinned-app-setting-info small{font-size:10px;line-height:1.3;color:var(--muted)}
+.pinned-app-setting input[type=checkbox]{flex-shrink:0;accent-color:var(--accent);width:16px;height:16px}
+.pinned-app-setting:has(input:checked){border-color:color-mix(in srgb,var(--accent) 50%,var(--border));background:color-mix(in srgb,var(--accent) 8%,var(--soft))}
+.pinned-app-setting input:disabled{opacity:.4}
+@media(max-width:620px){.pinned-app-settings{grid-template-columns:minmax(0,1fr)}.master-chat-emoji-panel-heading{align-items:flex-start;flex-direction:column;gap:3px}.master-chat-passkey-actions{flex-wrap:wrap;justify-content:flex-end}}
+
