@@ -1332,7 +1332,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.removeItem(PIN_STORAGE_KEY);
       localStorage.removeItem(PIN_THROTTLE_KEY);
       setPinRecord(null);
-      setPinMode('off');
+      setPinMode(passkeyRecord ? 'unlock' : 'off');
       setPinInput('');
       setPinConfirm('');
       setPinError('');
@@ -1402,7 +1402,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }
       try { localStorage.removeItem(PIN_THROTTLE_KEY); } catch { /* PIN removal still succeeded. */ }
       setPinRecord(null);
-      setPinMode('off');
+      setPinMode(passkeyRecord ? 'unlock' : 'off');
       setPinUnlocked(true);
       setPinInput('');
       setPinConfirm('');
@@ -2039,11 +2039,6 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <div className="master-chat-account-setting-copy"><ShieldCheck size={18}/><span><b>Optional app PIN</b><small>{pinRecord?'PIN protection is enabled in this browser.':passkeyRecord?'No PIN is set; your device passkey protects app opening.':'No PIN is set. Master Chat remains available without an app lock.'}</small></span></div>
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
-          <div className="master-chat-account-setting-row master-chat-passkey-setting">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Device passkey · app-only</b><small>{passkeyRecord ? 'A device-backed passkey is ready for this browser and site.' : 'Use the device’s fingerprint, face, or screen-lock verification when supported. This is not your account sign-in.'}</small></span></div>
-            <div className="master-chat-passkey-actions"><button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={() => void registerPasskey()}>{passkeyBusy ? 'Working…' : passkeyRecord ? 'Replace' : 'Set up'} <ChevronRight size={15}/></button>{passkeyRecord && <button type="button" className="master-chat-account-remove-photo" title="Remove passkey" aria-label="Remove passkey" disabled={passkeyBusy} onClick={removePasskey}><Trash2 size={15}/></button>}</div>
-          </div>
-          {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
           <div className="master-chat-account-setting-row">
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord && passkeyRecord ? 'Lock now; your PIN or device passkey can unlock Master Chat.' : pinRecord ? 'Lock now; the four-digit app PIN will be needed to return.' : passkeyRecord ? 'Lock now; your device passkey will be needed to return.' : 'Set an optional app PIN or passkey first to enable the app lock.'}</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={!pinRecord && !passkeyRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
@@ -2179,7 +2174,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <form className="master-chat-pin-modal" onSubmit={changeLocalPin} aria-label="Change local app PIN">
         <button type="button" className="master-chat-pin-close" title="Close PIN settings" onClick={() => setPinChangeOpen(false)}><X size={18}/></button>
         <span className="master-chat-pin-icon"><ShieldCheck size={23}/></span><h3>Privacy &amp; app PIN</h3>
-        <p>Creating a four-digit PIN is optional. If you cancel, you can keep using Master Chat without one and set it later here. The PIN is separate from your account password and does not encrypt online message content.</p>
+        <p>This is the local lock for opening Master Chat, not your account sign-in. A PIN is optional; you can also use a device-backed passkey that asks your phone or computer to verify with fingerprint, face, or its screen-lock method when supported. Neither option encrypts online message content.</p>
+        <section className="master-chat-account-settings-section master-chat-local-passkey-section"><div className="master-chat-account-setting-row master-chat-passkey-setting"><div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Device passkey · unlock Master Chat</b><small>{passkeyRecord ? 'Enabled for this browser and site. Device verification stays with your authenticator.' : 'Set up fingerprint, face, or device verification where supported.'}</small></span></div><div className="master-chat-passkey-actions"><button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={() => void registerPasskey()}>{passkeyBusy ? 'Working…' : passkeyRecord ? 'Replace' : 'Set up'} <ChevronRight size={15}/></button>{passkeyRecord && <button type="button" className="master-chat-account-remove-photo" title="Remove passkey" aria-label="Remove passkey" disabled={passkeyBusy} onClick={removePasskey}><Trash2 size={15}/></button>}</div></div>{passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}</section>
         {pinRecord && <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>}
         <label>{pinRecord?'New four-digit PIN':'Create four-digit PIN'}<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
