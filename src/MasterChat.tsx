@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, CircleHelp, EyeOff, ImagePlus, LockKeyhole, LogIn, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, EyeOff, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
@@ -120,7 +120,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair'>('loading');
+  const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair' | 'off'>('loading');
   const [pinRecord, setPinRecord] = useState<PinRecord | null>(null);
   const [pinUnlocked, setPinUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -135,6 +135,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [pinNewConfirmValue, setPinNewConfirmValue] = useState('');
   const [pinChangeError, setPinChangeError] = useState('');
   const [pinChangeBusy, setPinChangeBusy] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [deleteAccountStep, setDeleteAccountStep] = useState<0 | 1 | 2>(0);
+  const [deleteAccountText, setDeleteAccountText] = useState('');
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountBusy, setDeleteAccountBusy] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [messageActionId, setMessageActionId] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
@@ -239,9 +245,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     try {
       const raw = localStorage.getItem(PIN_STORAGE_KEY);
       if (!raw) {
-        // First use must configure an app-specific PIN before messages are shown.
-        setPinMode('setup');
-        setPinUnlocked(false);
+        // The app PIN is optional; users can configure it later in Privacy & app PIN.
+        setPinMode('off');
+        setPinUnlocked(true);
       } else {
         const value = JSON.parse(raw) as Partial<PinRecord>;
         if (value.version === 1 && typeof value.salt === 'string' && /^[a-f0-9]{32}$/.test(value.salt) &&
@@ -574,11 +580,11 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.removeItem(PIN_STORAGE_KEY);
       localStorage.removeItem(PIN_THROTTLE_KEY);
       setPinRecord(null);
-      setPinMode('setup');
+      setPinMode('off');
       setPinInput('');
       setPinConfirm('');
       setPinError('');
-      setPinUnlocked(false);
+      setPinUnlocked(true);
     } catch {
       setPinError('The browser blocked storage changes, so the local PIN cannot be reset here.');
     }
@@ -626,6 +632,139 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setPinChangeError(error instanceof Error ? error.message : 'Could not save the local PIN.');
     } finally {
       setPinChangeBusy(false);
+    }
+  };
+
+  const removeLocalPin = async () => {
+    if (!pinRecord || pinChangeBusy) return;
+    setPinChangeBusy(true);
+    setPinChangeError('');
+    try {
+      if (!/^\d{4}$/.test(pinCurrentValue)) throw new Error('Enter your current four-digit PIN to remove it.');
+      const candidate = await derivePinVerifier(pinCurrentValue, pinRecord.salt);
+      if (!sameHex(candidate, pinRecord.verifier)) throw new Error('The current PIN is incorrect.');
+      try {
+        localStorage.removeItem(PIN_STORAGE_KEY);
+      } catch {
+        throw new Error('Your browser blocked storage changes, so the PIN could not be removed.');
+      }
+      try { localStorage.removeItem(PIN_THROTTLE_KEY); } catch { /* PIN removal still succeeded. */ }
+      setPinRecord(null);
+      setPinMode('off');
+      setPinUnlocked(true);
+      setPinInput('');
+      setPinConfirm('');
+      setPinCurrentValue('');
+      setPinNewValue('');
+      setPinNewConfirmValue('');
+      setPinChangeOpen(false);
+      tell('App PIN removed. Master Chat will stay available without a PIN.', 'success');
+    } catch (error) {
+      setPinChangeError(error instanceof Error ? error.message : 'Could not remove the app PIN.');
+    } finally {
+      setPinChangeBusy(false);
+    }
+  };
+
+  const openPinSettings = () => {
+    setAccountSettingsOpen(false);
+    setPinChangeOpen(true);
+    setPinChangeError('');
+    setPinCurrentValue('');
+    setPinNewValue('');
+    setPinNewConfirmValue('');
+  };
+
+  const openDeleteAccount = () => {
+    setAccountSettingsOpen(false);
+    setDeleteAccountStep(1);
+    setDeleteAccountText('');
+    setDeleteAccountPassword('');
+    setDeleteAccountError('');
+  };
+
+  const cancelDeleteAccount = () => {
+    if (deleteAccountBusy) return;
+    setDeleteAccountStep(0);
+    setDeleteAccountText('');
+    setDeleteAccountPassword('');
+    setDeleteAccountError('');
+  };
+
+  const permanentlyDeleteAccount = async () => {
+    if (!supabaseClient || !session || !profile || deleteAccountBusy) return;
+    if (deleteAccountText !== 'DELETE') {
+      setDeleteAccountError('Type DELETE exactly to confirm permanent account deletion.');
+      return;
+    }
+    if (!deleteAccountPassword) {
+      setDeleteAccountError('Enter your account password to verify that you own this account.');
+      return;
+    }
+    setDeleteAccountBusy(true);
+    setDeleteAccountError('');
+    try {
+      const { data: reauthData, error: reauthError } = await supabaseClient.auth.signInWithPassword({
+        email: usernameEmail(profile.username),
+        password: deleteAccountPassword,
+      });
+      if (reauthError || reauthData.user?.id !== profile.id) {
+        throw new Error('The account password is incorrect. No deletion was performed.');
+      }
+      const { data, error } = await supabaseClient.functions.invoke('delete-master-chat-account', {
+        body: { confirmation: 'DELETE' },
+      });
+      if (error) {
+        let reason = '';
+        const context = (error as { context?: unknown }).context;
+        if (context instanceof Response) {
+          try {
+            const payload = await context.clone().json() as { error?: unknown };
+            if (typeof payload.error === 'string') reason = payload.error;
+          } catch { /* Use the safe fallback below. */ }
+        }
+        if (reason === 'account_deletion_unavailable') {
+          throw new Error('Permanent deletion is not available because the server is missing its protected configuration. Your account has not been confirmed as deleted.');
+        }
+        if (reason === 'account_profile_not_found') {
+          throw new Error('This Master Chat profile could not be verified. No account deletion was performed.');
+        }
+        throw new Error('The server could not confirm account deletion. Check your connection before trying again.');
+      }
+      if (!data || data.success !== true) {
+        throw new Error('The server did not confirm permanent deletion. Your account may still exist; reconnect and check before retrying.');
+      }
+
+      try { localStorage.removeItem(PIN_STORAGE_KEY); } catch { /* Server-side deletion already completed. */ }
+      try { localStorage.removeItem(PIN_THROTTLE_KEY); } catch { /* Server-side deletion already completed. */ }
+      try { await supabaseClient.auth.signOut({ scope: 'local' }); } catch { /* Clear local UI even if the deleted session is invalid. */ }
+
+      setSession(null);
+      setProfile(null);
+      setPeople([]);
+      setActivePerson(null);
+      setMessages([]);
+      setDraft('');
+      setPeopleQuery('');
+      setUsername('');
+      setPassword('');
+      setConfirmPassword('');
+      setAuthMode('signup');
+      setPinRecord(null);
+      setPinMode('off');
+      setPinUnlocked(true);
+      setConversationFullscreen(false);
+      setAccountSettingsOpen(false);
+      setPinChangeOpen(false);
+      setDeleteAccountStep(0);
+      setDeleteAccountText('');
+      setDeleteAccountPassword('');
+      setNotice('Your Master Chat account and its chat data have been permanently deleted.');
+      setNoticeKind('success');
+    } catch (error) {
+      setDeleteAccountError(error instanceof Error ? error.message : 'Could not confirm account deletion. Please retry.');
+    } finally {
+      setDeleteAccountBusy(false);
     }
   };
 
@@ -687,7 +826,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const lockApp = () => {
     if (!pinRecord) {
-      tell('Set your four-digit PIN in Privacy & app PIN before locking Master Chat.', 'info');
+      tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
       return;
     }
     setConversationFullscreen(false);
@@ -829,7 +968,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     </section>;
   }
 
-  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')}>
+  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')}>
     <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
     {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/></>}
     <aside className="master-chat-sidebar">
@@ -837,18 +976,25 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setConversationFullscreen(false); setMessages([]); setActivePerson(person); setNotice(''); }}>
+        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); }}>
           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
         </button>)}
         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
       </div>
-      <div className="master-chat-account"><span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span><span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span><div className="master-chat-account-actions"><label className={'master-chat-signout master-chat-avatar-change'+(avatarBusy?' busy':'')} title={avatarBusy?'Saving profile picture…':'Change profile picture'} aria-label="Change profile picture"><ImagePlus size={15}/><input type="file" accept="image/*" aria-label="Choose profile picture" disabled={avatarBusy} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void saveProfileAvatar(file);}}/></label>{profile.avatar_data && <button type="button" className="master-chat-signout" title="Remove profile picture" aria-label="Remove profile picture" disabled={avatarBusy} onClick={()=>void removeProfileAvatar()}><Trash2 size={14}/></button>}<button className="master-chat-signout" title={pinRecord?'Lock Master Chat':'Set your four-digit app PIN'} onClick={lockApp}><LockKeyhole size={15}/></button><button className="master-chat-signout" title={pinRecord?'Change Master Chat PIN':'Set four-digit Master Chat PIN'} onClick={() => {setPinChangeOpen(true);setPinChangeError('');setPinCurrentValue('');setPinNewValue('');setPinNewConfirmValue('');}}><ShieldCheck size={15}/></button><button className="master-chat-signout" title="Sign out" onClick={() => void signOut()}><LogIn size={15}/></button></div></div>
+      <div className="master-chat-account">
+        <span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span>
+        <span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span>
+        <div className="master-chat-account-actions">
+          <button type="button" className="master-chat-signout" title="Account & privacy settings" aria-label="Open account and privacy settings" onClick={() => setAccountSettingsOpen(true)}><Settings2 size={16}/></button>
+          <button type="button" className="master-chat-signout" title="Sign out" aria-label="Sign out of Master Chat" onClick={() => void signOut()}><LogOut size={15}/></button>
+        </div>
+      </div>
     </aside>
     <div className="master-chat-main">
       {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
-        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => {setConversationFullscreen(false);setActivePerson(null);}}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>{iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}</header>
+        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>{iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}</header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
@@ -869,16 +1015,77 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         </form>
       </>}
     </div>
+    {accountSettingsOpen && <div className="master-chat-account-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget)setAccountSettingsOpen(false);}}>
+      <section className="master-chat-account-modal" role="dialog" aria-modal="true" aria-labelledby="master-chat-account-title" onMouseDown={event=>event.stopPropagation()}>
+        <button type="button" className="master-chat-account-modal-close" title="Close account settings" aria-label="Close account settings" onClick={()=>setAccountSettingsOpen(false)}><X size={18}/></button>
+        <div className="master-chat-account-modal-heading">
+          <span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0,1).toUpperCase()}</span>
+          <div><p className="eyebrow">MASTER CHAT</p><h3 id="master-chat-account-title">Account &amp; privacy</h3><p>@{profile.username} · {live ? 'Connected' : 'Reconnecting'}</p></div>
+        </div>
+        <div className="master-chat-account-settings-section">
+          <div className="master-chat-account-photo-row">
+            <div className="master-chat-account-setting-copy"><ImagePlus size={18}/><span><b>Profile picture</b><small>Choose a small image to represent you.</small></span></div>
+            <label className={'master-chat-account-photo-pick'+(avatarBusy?' busy':'')} title="Upload a profile picture"><span>{avatarBusy?'Saving…':'Change'}</span><input type="file" accept="image/*" aria-label="Choose profile picture" disabled={avatarBusy} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void saveProfileAvatar(file);}}/></label>
+            {profile.avatar_data && <button type="button" className="master-chat-account-remove-photo" title="Remove profile picture" aria-label="Remove profile picture" disabled={avatarBusy} onClick={()=>void removeProfileAvatar()}><Trash2 size={15}/></button>}
+          </div>
+          <div className="master-chat-account-setting-row">
+            <div className="master-chat-account-setting-copy"><ShieldCheck size={18}/><span><b>Optional app PIN</b><small>{pinRecord?'PIN protection is enabled in this browser.':'No PIN is set. Master Chat remains available without one.'}</small></span></div>
+            <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
+          </div>
+          <div className="master-chat-account-setting-row">
+            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord?'Lock now; a four-digit PIN will be needed to return.':'Set an optional PIN first to enable the app lock.'}</small></span></div>
+            <button type="button" className="master-chat-account-action" disabled={!pinRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
+          </div>
+        </div>
+        <div className="master-chat-account-modal-actions">
+          <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
+          <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
+        </div>
+        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> Your app PIN is stored only in this browser. It is separate from your account password and does not encrypt messages.</p>
+      </section>
+    </div>}
+    {deleteAccountStep > 0 && <div className="master-chat-delete-account-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)cancelDeleteAccount();}}>
+      <section className="master-chat-delete-account-modal" role="dialog" aria-modal="true" aria-labelledby="master-chat-delete-title" onMouseDown={event=>event.stopPropagation()}>
+        <button type="button" className="master-chat-account-modal-close" title="Cancel deletion" aria-label="Cancel account deletion" disabled={deleteAccountBusy} onClick={cancelDeleteAccount}><X size={18}/></button>
+        <span className="master-chat-delete-account-icon"><AlertTriangle size={24}/></span>
+        {deleteAccountStep===1 ? <>
+          <p className="eyebrow">WARNING 1 OF 2</p>
+          <h3 id="master-chat-delete-title">Delete your Master Chat account?</h3>
+          <p className="master-chat-delete-account-intro">This permanently removes your Master Chat account and its cloud data. This is not the same as signing out.</p>
+          <ul className="master-chat-delete-list">
+            <li>Your username and profile picture will be removed.</li>
+            <li>Your messages and call records will be deleted for all participants.</li>
+            <li>The deleted account cannot be restored. You can create a new account later, but old data will not return.</li>
+          </ul>
+          <p className="master-chat-delete-scope">Only Master Chat account data is affected. Your AeroShell desktop, iOS mode, and other local simulator data are not deleted.</p>
+          {deleteAccountError && <p className="master-chat-notice error" role="alert">{deleteAccountError}</p>}
+          <div className="master-chat-delete-actions"><button type="button" className="master-chat-delete-cancel" onClick={cancelDeleteAccount}>Keep my account</button><button type="button" className="master-chat-account-delete-primary" onClick={()=>{setDeleteAccountError('');setDeleteAccountStep(2);}}>Continue to final warning <ChevronRight size={16}/></button></div>
+        </> : <>
+          <p className="eyebrow">WARNING 2 OF 2 · FINAL CONFIRMATION</p>
+          <h3 id="master-chat-delete-title">This action cannot be undone.</h3>
+          <p className="master-chat-delete-account-intro">The next button will permanently delete <b>@{profile.username}</b>, and remove the Master Chat data linked to this account. Please make sure you truly want to continue.</p>
+          <label className="master-chat-delete-confirm-label">Confirm your current account password
+            <input autoComplete="current-password" type="password" value={deleteAccountPassword} onChange={event=>{setDeleteAccountPassword(event.target.value);setDeleteAccountError('');}} placeholder="Account password" aria-label="Current account password for deletion confirmation" />
+          </label>
+          <label className="master-chat-delete-confirm-label">Type <code>DELETE</code> to confirm
+            <input autoFocus autoComplete="off" spellCheck={false} value={deleteAccountText} onChange={event=>{setDeleteAccountText(event.target.value);setDeleteAccountError('');}} placeholder="Type DELETE" aria-label="Type DELETE to confirm account deletion" />
+          </label>
+          {deleteAccountError && <p className="master-chat-notice error" role="alert">{deleteAccountError}</p>}
+          <div className="master-chat-delete-actions"><button type="button" className="master-chat-delete-cancel" disabled={deleteAccountBusy} onClick={cancelDeleteAccount}>Cancel</button><button type="button" className="master-chat-account-delete-primary" disabled={deleteAccountBusy || deleteAccountText!=='DELETE' || !deleteAccountPassword} onClick={()=>void permanentlyDeleteAccount()}>{deleteAccountBusy?<><span className="master-chat-spinner small"/> Deleting…</>:<>Permanently delete account <Trash2 size={16}/></>}</button></div>
+          <p className="master-chat-delete-final-note">This is the second and final warning. There is no undo.</p>
+        </>}
+      </section>
+    </div>}
     {pinChangeOpen && <div className="master-chat-pin-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget)setPinChangeOpen(false);}}>
       <form className="master-chat-pin-modal" onSubmit={changeLocalPin} aria-label="Change local app PIN">
         <button type="button" className="master-chat-pin-close" title="Close PIN settings" onClick={() => setPinChangeOpen(false)}><X size={18}/></button>
         <span className="master-chat-pin-icon"><ShieldCheck size={23}/></span><h3>Privacy &amp; app PIN</h3>
-        <p>A four-digit PIN is required to unlock Master Chat in this browser. It is separate from your account password and does not encrypt online message content.</p>
+        <p>Creating a four-digit PIN is optional. If you cancel, you can keep using Master Chat without one and set it later here. The PIN is separate from your account password and does not encrypt online message content.</p>
         {pinRecord && <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>}
         <label>{pinRecord?'New four-digit PIN':'Create four-digit PIN'}<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         {pinChangeError && <p className="master-chat-notice error" role="alert">{pinChangeError}</p>}
-        <div className="master-chat-pin-modal-actions"><button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':pinRecord?'Change PIN':'Set PIN'}</button><button type="button" className="secondary-button" onClick={()=>setPinChangeOpen(false)}>Cancel</button></div>
+        <div className="master-chat-pin-modal-actions"><button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':pinRecord?'Change PIN':'Set PIN'}</button>{pinRecord && <button type="button" className="danger-button" disabled={pinChangeBusy} onClick={() => void removeLocalPin()}>{pinChangeBusy?'Working…':'Remove PIN'}</button>}<button type="button" className="secondary-button" onClick={()=>setPinChangeOpen(false)}>Cancel</button></div>
         </form>
     </div>}
   </section>;
