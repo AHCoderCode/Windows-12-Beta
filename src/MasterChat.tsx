@@ -284,7 +284,6 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [scheduleAt, setScheduleAt] = useState(() => asLocalDateTimeInput(new Date(Date.now() + 5 * 60 * 1000)));
   const [scheduleError, setScheduleError] = useState('');
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledChatMessage[]>(() => readScheduledChatMessages());
-  const scheduledProcessingRef = useRef(new Set<string>());
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
