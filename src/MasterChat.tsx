@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Copy, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
@@ -429,6 +429,17 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [groupError, setGroupError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [pendingImage, setPendingImage] = useState<{
+    file: File;
+    previewUrl: string;
+    target: { person: ChatProfile | null; group: ChatGroup | null };
+    draftSnapshot: string;
+  } | null>(null);
+  const [imageCaption, setImageCaption] = useState('');
+  const [imageViewer, setImageViewer] = useState<{ url: string; name: string; caption: string; messageId: string } | null>(null);
+  const [imageViewerReady, setImageViewerReady] = useState(false);
+  const [imageViewerError, setImageViewerError] = useState(false);
+  const [imageActionBusy, setImageActionBusy] = useState(false);
   const [recordingVoice, setRecordingVoice] = useState(false);
   const [voicePreparing, setVoicePreparing] = useState(false);
   const [pastedFileOpen, setPastedFileOpen] = useState(false);
@@ -459,6 +470,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [localPasskey, setLocalPasskey] = useState<LocalPasskeyRecord | null>(() => readLocalPasskey());
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState('');
+  const [passkeyPromptIntent, setPasskeyPromptIntent] = useState<{
+    method: 'face' | 'fingerprint' | 'device';
+    action: 'create' | 'unlock';
+  } | null>(null);
   const [pinCooldownUntil, setPinCooldownUntil] = useState(0);
   const [pinNow, setPinNow] = useState(Date.now());
   const [pinChangeOpen, setPinChangeOpen] = useState(false);
@@ -493,6 +508,40 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   useEffect(() => {
     writeScheduledChatMessages(scheduledMessages);
   }, [scheduledMessages]);
+
+  useEffect(() => {
+    const previewUrl = pendingImage?.previewUrl;
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [pendingImage?.previewUrl]);
+
+  useEffect(() => {
+    if (!imageViewer) return;
+    let cancelled = false;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setImageViewer(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    const warmImage = new Image();
+    warmImage.decoding = 'async';
+    warmImage.src = imageViewer.url;
+    const markReady = () => {
+      if (!cancelled) {
+        setImageViewerReady(true);
+        setImageViewerError(false);
+      }
+    };
+    if (warmImage.complete && warmImage.naturalWidth > 0) markReady();
+    else if (typeof warmImage.decode === 'function') void warmImage.decode().then(markReady).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [imageViewer?.url]);
 
   useEffect(() => {
     const onSent = (event: Event) => {
@@ -1041,19 +1090,20 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     type: 'file' | 'voice' = 'file',
     durationMs = 0,
     target: { person: ChatProfile | null; group: ChatGroup | null } = { person: activePerson, group: activeGroup },
-  ) => {
-    if (!supabaseClient || !profile || (!target.person && !target.group) || attachmentBusy) return;
+    caption = '',
+  ): Promise<boolean> => {
+    if (!supabaseClient || !profile || (!target.person && !target.group) || attachmentBusy) return false;
     if (isVideoFile(file, type)) {
       tell('Video attachments are disabled. Send an image, document, text/code file, or voice note instead.', 'error');
-      return;
+      return false;
     }
     if (file.size < 1 || file.size > MAX_ATTACHMENT_BYTES) {
       tell('Files must be smaller than 15 MB.', 'error');
-      return;
+      return false;
     }
     if (type === 'voice' && (!file.type.toLowerCase().startsWith('audio/') || durationMs < 1 || durationMs > 120000)) {
       tell('That voice note could not be prepared. Record a note up to two minutes long and retry.', 'error');
-      return;
+      return false;
     }
     setAttachmentBusy(true);
     setNotice('');
@@ -1083,7 +1133,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         sender_id: profile.id,
         recipient_id: target.group ? null : target.person!.id,
         group_id: target.group?.id ?? null,
-        body: '',
+        body: type === 'file' ? caption.trim().slice(0, 2000) : '',
         message_type: type,
         attachment_path: path,
         attachment_name: fileName,
@@ -1105,8 +1155,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         target.group?.id ?? null,
       ));
       tell(type === 'voice' ? 'Voice message sent.' : 'Attachment sent.', 'success');
+      return true;
     } catch (error) {
       tell(error instanceof Error ? error.message : 'Could not send this attachment. Please retry.', 'error');
+      return false;
     } finally {
       setAttachmentBusy(false);
     }
@@ -1115,7 +1167,111 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const handleAttachmentSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
     event.currentTarget.value = '';
-    if (file) void sendAttachment(file);
+    if (!file) return;
+    if (file.type.toLowerCase().startsWith('image/')) {
+      if (!activePerson && !activeGroup) {
+        tell('Open a private or group conversation before sending an image.', 'info');
+        return;
+      }
+      if (file.size < 1 || file.size > MAX_ATTACHMENT_BYTES) {
+        tell('Images must be smaller than 15 MB.', 'error');
+        return;
+      }
+      setImageCaption(draft.trim());
+      setPendingImage({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        target: { person: activePerson, group: activeGroup },
+        draftSnapshot: draft.trim(),
+      });
+      return;
+    }
+    void sendAttachment(file);
+  };
+
+  const cancelPendingImage = () => {
+    setPendingImage(null);
+    setImageCaption('');
+  };
+
+  const sendPendingImage = async () => {
+    if (!pendingImage || attachmentBusy) return;
+    const chosenImage = pendingImage;
+    const caption = imageCaption.trim().slice(0, 2000);
+    const sent = await sendAttachment(chosenImage.file, 'file', 0, chosenImage.target, caption);
+    if (!sent) return;
+    if (chosenImage.draftSnapshot && draft.trim() === chosenImage.draftSnapshot) setDraft('');
+    setPendingImage(null);
+    setImageCaption('');
+  };
+
+  const getViewerImageBlob = async (viewer: NonNullable<typeof imageViewer>) => {
+    const response = await fetch(viewer.url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+    if (!response.ok) throw new Error('This image link expired or could not be downloaded. Reopen the conversation and try again.');
+    const blob = await response.blob();
+    if (!blob.type.toLowerCase().startsWith('image/')) throw new Error('The shared file is not available as an image.');
+    return blob;
+  };
+
+  const copyImageFromViewer = async () => {
+    if (!imageViewer || imageActionBusy) return;
+    setImageActionBusy(true);
+    try {
+      if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+        throw new Error('This browser cannot copy image data to the clipboard. Use Download image instead.');
+      }
+      const original = await getViewerImageBlob(imageViewer);
+      const bitmap = await createImageBitmap(original);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        bitmap.close();
+        throw new Error('The image could not be prepared for copying. Use Download image instead.');
+      }
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const png = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('The browser could not convert this image for the clipboard.')), 'image/png');
+      });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      tell('Image copied to the clipboard.', 'success');
+    } catch (error) {
+      tell(error instanceof Error ? error.message : 'Could not copy the image in this browser. Use Download image instead.', 'error');
+    } finally {
+      setImageActionBusy(false);
+    }
+  };
+
+  const downloadImageFromViewer = async () => {
+    if (!imageViewer || imageActionBusy) return;
+    setImageActionBusy(true);
+    try {
+      const blob = await getViewerImageBlob(imageViewer);
+      const localUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = localUrl;
+      link.download = safeAttachmentName(imageViewer.name || 'shared-image.png');
+      link.rel = 'noopener';
+      link.style.position = 'fixed';
+      link.style.left = '-10000px';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(localUrl), 60000);
+      tell('Image download started.', 'success');
+    } catch (error) {
+      tell(error instanceof Error ? error.message : 'Could not download the image. Try opening the conversation again.', 'error');
+    } finally {
+      setImageActionBusy(false);
+    }
+  };
+
+  const openImageViewer = (viewer: NonNullable<typeof imageViewer>) => {
+    setImageViewerReady(false);
+    setImageViewerError(false);
+    setImageViewer(viewer);
   };
 
   const sendPastedTextFile = async (event: FormEvent) => {
@@ -1708,7 +1864,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.setItem(LOCAL_PASSKEY_STORAGE_KEY, JSON.stringify(record));
       setLocalPasskey(record);
       setPasskeyError('');
-      tell(`${method === 'face' ? 'Face ID' : 'Fingerprint'} passkey created. Your browser and device still choose which built-in authenticator verifies the passkey, including any configured screen-lock fallback.`, 'success');
+      tell(`Device passkey created with ${method === 'face' ? 'Face ID' : 'fingerprint'} as your preference. The operating system may still request a pattern/PIN fallback.`, 'success');
     } catch (error) {
       setPasskeyError(error instanceof Error ? error.message : 'Could not set up a passkey on this device.');
     } finally {
@@ -2094,7 +2250,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         </>}
         {pinError && <p className="master-chat-notice error" role="alert">{pinError}</p>}
         {!isRepair && !passkeyOnlyLock && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages'}</button>}
-        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithLocalPasskey()}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying…' : localPasskey.method === 'face' ? 'Use Face ID passkey' : localPasskey.method === 'fingerprint' ? 'Use fingerprint passkey' : 'Use device passkey'}</button>}
+        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => setPasskeyPromptIntent({method:localPasskey.method ?? 'device',action:'unlock'})}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying…' : 'Use device passkey'}</button>}
         {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
         <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
       </form>
@@ -2235,13 +2391,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
                       : <div className="master-chat-attachment-card">
                           {message.attachment_mime?.startsWith('image/')
                             ? attachmentUrl
-                              ? <a className="master-chat-image-attachment" href={attachmentUrl} target="_blank" rel="noreferrer" title="Open image"><img src={attachmentUrl} alt={message.attachment_name ?? 'Shared image'} loading="lazy"/></a>
+                              ? <button type="button" className="master-chat-image-attachment" onClick={() => openImageViewer({url:attachmentUrl,name:message.attachment_name ?? 'Shared image',caption:message.body ?? '',messageId:message.id})} title="View image" aria-label={'View image '+(message.attachment_name ?? '')}><img src={attachmentUrl} alt={message.attachment_name ?? 'Shared image'} loading="lazy" decoding="async" onLoad={() => { if (imageViewer?.messageId === message.id) setImageViewerReady(true); }}/></button>
                               : <span className="master-chat-attachment-unavailable">Preparing secure image…</span>
                             : <a className="master-chat-file-attachment" href={attachmentUrl ?? undefined} target="_blank" rel="noreferrer" download={message.attachment_name ?? 'attachment'} onClick={event => { if (!attachmentUrl) event.preventDefault(); }}>
                                 <span className="master-chat-attachment-icon"><FileText size={18}/></span>
                                 <span className="master-chat-file-meta"><b>{message.attachment_name ?? 'Attachment'}</b><small>{message.attachment_mime ?? 'File'} · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB{!attachmentUrl ? ' · Preparing…' : ''}</small></span>
                                 <Download size={16}/>
                               </a>}
+                          {message.attachment_mime?.startsWith('image/') && message.body.trim() && <p className="master-chat-image-caption">{message.body}</p>}
                         </div>}
                   <div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div>
                 </div>
@@ -2287,13 +2444,13 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
           {localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>{localPasskey.method === 'face' ? 'Face ID passkey saved' : localPasskey.method === 'fingerprint' ? 'Fingerprint passkey saved' : 'Device passkey saved'}</b><small>Saved in this browser for your account. Your device may still present its configured system verification method.</small></span></div>
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>{localPasskey.method === 'face' ? 'Face ID preferred' : localPasskey.method === 'fingerprint' ? 'Fingerprint preferred' : 'Device passkey saved'}</b><small>Saved in this browser. Android may still request its configured screen-lock pattern/PIN.</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={removeLocalPasskey}>Remove <ChevronRight size={15}/></button>
           </div> : <div className="master-chat-account-setting-row master-chat-passkey-row">
             <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Create a biometric passkey</b><small>Choose a preferred method. The operating system controls which biometric is available.</small></span></div>
             <div className="master-chat-passkey-actions">
-              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');void saveLocalPasskey('face');}}><ShieldCheck size={15}/>{passkeyBusy?'Working…':'Face ID'}</button>
-              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');void saveLocalPasskey('fingerprint');}}><Fingerprint size={15}/>{passkeyBusy?'Working…':'Fingerprint'}</button>
+              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');setPasskeyPromptIntent({method:'face',action:'create'});}}><ShieldCheck size={15}/>Prefer Face ID</button>
+              <button type="button" className="master-chat-passkey-choice" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');setPasskeyPromptIntent({method:'fingerprint',action:'create'});}}><Fingerprint size={15}/>Prefer fingerprint</button>
             </div>
           </div>}
           {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
@@ -2310,7 +2467,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
-        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN and passkey are local unlock methods for this browser; neither replaces your account password nor encrypts messages. Face ID and fingerprint are separate preferred setup labels, but websites cannot force the device to use a specific biometric or block its secure screen-lock fallback. If the device offers only a pattern/PIN and you do not want that, cancel and configure Face ID or fingerprint in your device settings first. Removing this browser link does not delete a credential from your device’s passkey manager.</p>
+        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> Important: "Prefer Face ID" and "Prefer fingerprint" tell Master Chat your preference only. The browser and operating system choose the actual verification method, and websites cannot block Android's screen-lock pattern/PIN fallback. Master Chat now asks for confirmation before opening the system prompt, so cancel when you require biometric-only verification. Removing this browser link does not delete a credential from the device's passkey manager.</p>
       </section>
     </div>}
     {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>
@@ -2455,5 +2612,54 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         <div className="master-chat-pin-modal-actions"><button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':pinRecord?'Change PIN':'Set PIN'}</button>{pinRecord && <button type="button" className="danger-button" disabled={pinChangeBusy} onClick={() => void removeLocalPin()}>{pinChangeBusy?'Working…':'Remove PIN'}</button>}<button type="button" className="secondary-button" onClick={()=>setPinChangeOpen(false)}>Cancel</button></div>
         </form>
     </div>}
+    {passkeyPromptIntent && createPortal(
+      <div className="master-chat-passkey-preflight-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPasskeyPromptIntent(null);}}>
+        <section className="master-chat-passkey-preflight" role="dialog" aria-modal="true" aria-labelledby="master-chat-passkey-preflight-title">
+          <button type="button" className="master-chat-account-modal-close" aria-label="Cancel passkey setup" title="Cancel" onClick={()=>setPasskeyPromptIntent(null)}><X size={18}/></button>
+          <span className="master-chat-pin-icon"><Fingerprint size={23}/></span>
+          <p className="eyebrow">DEVICE AUTHENTICATION</p>
+          <h3 id="master-chat-passkey-preflight-title">{passkeyPromptIntent.action==='create'?'Before creating a passkey':'Before using this passkey'}</h3>
+          <p>Master Chat requests the phone's built-in passkey authenticator. It cannot force Face ID or fingerprint exclusively. Android or your password manager may ask for the phone's pattern/PIN, including as a fallback even when a biometric is enrolled.</p>
+          <p className="master-chat-passkey-preflight-note">If you do not want any pattern/PIN prompt, choose Cancel now. A website cannot guarantee biometric-only authentication; that requires a native app configured to allow biometrics without device-credential fallback.</p>
+          <div className="master-chat-feature-modal-actions">
+            <button type="button" className="secondary-button" onClick={()=>setPasskeyPromptIntent(null)}>Cancel — don't open prompt</button>
+            <button type="button" className="master-chat-primary" disabled={passkeyBusy} onClick={()=>{const intent=passkeyPromptIntent;setPasskeyPromptIntent(null);if(intent.action==='create' && (intent.method==='face'||intent.method==='fingerprint'))void saveLocalPasskey(intent.method);else void unlockWithLocalPasskey();}}>Continue to device prompt</button>
+          </div>
+        </section>
+      </div>,
+      document.body
+    )}
+    {pendingImage && createPortal(
+      <div className="master-chat-image-compose-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)cancelPendingImage();}}>
+        <section className="master-chat-image-compose" role="dialog" aria-modal="true" aria-labelledby="master-chat-image-compose-title">
+          <header><div><b id="master-chat-image-compose-title">Send image</b><small>{pendingImage.file.name}</small></div><button type="button" title="Cancel image" aria-label="Cancel image" onClick={cancelPendingImage}><X size={19}/></button></header>
+          <div className="master-chat-image-compose-preview"><img src={pendingImage.previewUrl} alt="Image ready to send" decoding="async"/></div>
+          <label className="master-chat-image-compose-caption"><span>Caption (optional)</span><textarea autoFocus rows={3} maxLength={2000} value={imageCaption} onChange={event=>setImageCaption(event.target.value)} placeholder="Write a message under your picture…"/></label>
+          <div className="master-chat-image-compose-actions"><button type="button" className="secondary-button" disabled={attachmentBusy} onClick={cancelPendingImage}>Cancel</button><button type="button" className="master-chat-primary" disabled={attachmentBusy} onClick={()=>void sendPendingImage()}>{attachmentBusy?<><span className="master-chat-spinner small"/> Sending…</>:<><Send size={15}/> Send image</>}</button></div>
+        </section>
+      </div>,
+      document.body
+    )}
+    {imageViewer && createPortal(
+      <div className="master-chat-image-viewer-backdrop" role="dialog" aria-modal="true" aria-label="Shared image viewer" onMouseDown={event=>{if(event.target===event.currentTarget)setImageViewer(null);}}>
+        <section className="master-chat-image-viewer">
+          <header className="master-chat-image-viewer-header">
+            <div><b>{imageViewer.name}</b><small>{imageViewer.caption.trim()?'Image with caption':'Shared image'}</small></div>
+            <div className="master-chat-image-viewer-actions">
+              <button type="button" title="Copy image" aria-label="Copy image to clipboard" disabled={imageActionBusy} onClick={()=>void copyImageFromViewer()}><Copy size={17}/><span>{imageActionBusy?'Working…':'Copy image'}</span></button>
+              <button type="button" title="Download image" aria-label="Download image" disabled={imageActionBusy} onClick={()=>void downloadImageFromViewer()}><Download size={17}/><span>Download</span></button>
+              <button type="button" title="Close image viewer" aria-label="Close image viewer" onClick={()=>setImageViewer(null)}><X size={19}/></button>
+            </div>
+          </header>
+          <div className={'master-chat-image-viewer-stage'+(imageViewerReady?' ready':'')}>
+            {!imageViewerReady && !imageViewerError && <div className="master-chat-image-viewer-loading"><span className="master-chat-spinner"/><b>Opening image…</b></div>}
+            {imageViewerError && <div className="master-chat-image-viewer-loading"><b>Image couldn't be loaded</b><span>Reopen the conversation and try again.</span></div>}
+            <img src={imageViewer.url} alt={imageViewer.name} decoding="async" fetchPriority="high" onLoad={()=>{setImageViewerReady(true);setImageViewerError(false);}} onError={()=>{setImageViewerError(true);setImageViewerReady(false);}}/>
+          </div>
+          {imageViewer.caption.trim() && <p className="master-chat-image-viewer-caption">{imageViewer.caption}</p>}
+        </section>
+      </div>,
+      document.body
+    )}
   </section>;
 }
