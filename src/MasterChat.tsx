@@ -521,7 +521,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     let cancelled = false;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') setImageViewer(null);
     };
     window.addEventListener('keydown', closeOnEscape);
