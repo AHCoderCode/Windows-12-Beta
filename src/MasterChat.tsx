@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
-import { getConversationMessages, getGroupMessages, mergeConversationMessages, mergeGroupMessages } from './master-chat-utils';
+import { getConversationMessages, getGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
 type MessageType = 'text' | 'file' | 'voice';
@@ -44,9 +44,9 @@ type ChatGroupMember = {
 const ATTACHMENT_BUCKET = 'master-chat-attachments';
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const MESSAGE_FIELDS = 'id, sender_id, recipient_id, group_id, body, message_type, attachment_path, attachment_name, attachment_mime, attachment_size, voice_duration_ms, created_at';
-function isVideoFile(file: File) {
+function isVideoFile(file: File, messageType: 'file' | 'voice' = 'file') {
   return file.type.toLowerCase().startsWith('video/')
-    || /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|ogv)$/i.test(file.name);
+    || (messageType === 'file' && /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|ogv)$/i.test(file.name));
 }
 function safeAttachmentName(name: string) {
   return name.replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 180) || 'attachment.txt';
@@ -726,7 +726,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     target: { person: ChatProfile | null; group: ChatGroup | null } = { person: activePerson, group: activeGroup },
   ) => {
     if (!supabaseClient || !profile || (!target.person && !target.group) || attachmentBusy) return;
-    if (isVideoFile(file)) {
+    if (isVideoFile(file, type)) {
       tell('Video attachments are disabled. Send an image, document, text/code file, or voice note instead.', 'error');
       return;
     }
@@ -790,7 +790,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     }
   };
 
-  const handleAttachmentSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAttachmentSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
     event.currentTarget.value = '';
     if (file) void sendAttachment(file);
@@ -1453,7 +1453,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }, []);
 
   useEffect(() => {
-    if (iosMode && activePerson && pinUnlocked) return;
+    if (iosMode && (activePerson || activeGroup) && pinUnlocked) return;
     setConversationFullscreen(false);
     if (chatRootRef.current && document.fullscreenElement === chatRootRef.current) {
       nativeChatFullscreenRef.current = false;
