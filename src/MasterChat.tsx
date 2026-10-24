@@ -1578,7 +1578,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const signOut = async () => {
     if (!supabaseClient) return;
-    if (voiceRecorderRef.current) cancelVoiceRecording();
+    if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
     const { error } = await supabaseClient.auth.signOut();
     if (error) tell('Could not sign out. Please try again.', 'error');
     else {
