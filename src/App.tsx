@@ -7,7 +7,7 @@ import {
   ShoppingBag, Smartphone, Sun, Target, Palette, Sparkles, Trash2, Undo2, Upload, Volume2, Wifi, X, Music, Save, Terminal, Timer, ArrowLeftRight, type LucideIcon
 } from 'lucide-react';
 import './styles.css';
-import { MasterChat } from './MasterChat';
+import { MasterChat, processMasterChatScheduledMessages } from './MasterChat';
 import { clampWindowFrame, createInitialWindowFrame, migrateInstalledApps } from './shell-utils';
 import { createMineLayout, createSnakeFood, has2048Moves, mineNeighbors, move2048, paintStrokeStyle, spawn2048, type Direction2048 } from './game-utils';
 import { IOSExperience, IOSSettingsApp, type IOSPrefs } from './IOSExperience';
@@ -164,6 +164,7 @@ export default function App() {
  const drag=useRef<{id:number;dx:number;dy:number;kind?:'move'|'resize';edge?:string;startX?:number;startY?:number;startW?:number;startH?:number;originX?:number;originY?:number}|null>(null);
  const notice=(s:string)=>{setToast(s);window.setTimeout(()=>setToast(''),2600);};
  useEffect(()=>{try{localStorage.removeItem('aeroshell.account.pin.v1')}catch{/* Remove the legacy local desktop PIN when storage permits. */}},[]);
+ useEffect(()=>{void processMasterChatScheduledMessages();const timer=window.setInterval(()=>void processMasterChatScheduledMessages(),5000);return()=>window.clearInterval(timer);},[]);
  useEffect(()=>{const id=window.setInterval(()=>setClock(new Date()),1000);return()=>clearInterval(id);},[]);
  useEffect(()=>{try{if(localStorage.getItem('aeroshell.store.default-apps.v2')!=='1'){setInstalledApps(current=>migrateInstalledApps(current) as AppId[]);localStorage.setItem('aeroshell.store.default-apps.v2','1');}}catch{/* leave the current installed list unchanged if storage is unavailable */}},[]);
  useEffect(()=>{try{if(localStorage.getItem('aeroshell.master-chat.preinstall.v1')!=='1'){setInstalledApps(current=>current.includes('master-chat')?current:[...current,'master-chat']);localStorage.setItem('aeroshell.master-chat.preinstall.v1','1');}}catch{/* keep current installed apps if storage is unavailable */}},[]);
