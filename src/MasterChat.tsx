@@ -120,7 +120,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [live, setLive] = useState(false);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair'>('loading');
+  const [pinMode, setPinMode] = useState<'loading' | 'setup' | 'unlock' | 'repair' | 'off'>('loading');
   const [pinRecord, setPinRecord] = useState<PinRecord | null>(null);
   const [pinUnlocked, setPinUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -239,9 +239,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     try {
       const raw = localStorage.getItem(PIN_STORAGE_KEY);
       if (!raw) {
-        // First use must configure an app-specific PIN before messages are shown.
-        setPinMode('setup');
-        setPinUnlocked(false);
+        // The app PIN is optional; users can configure it later in Privacy & app PIN.
+        setPinMode('off');
+        setPinUnlocked(true);
       } else {
         const value = JSON.parse(raw) as Partial<PinRecord>;
         if (value.version === 1 && typeof value.salt === 'string' && /^[a-f0-9]{32}$/.test(value.salt) &&
@@ -574,11 +574,11 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       localStorage.removeItem(PIN_STORAGE_KEY);
       localStorage.removeItem(PIN_THROTTLE_KEY);
       setPinRecord(null);
-      setPinMode('setup');
+      setPinMode('off');
       setPinInput('');
       setPinConfirm('');
       setPinError('');
-      setPinUnlocked(false);
+      setPinUnlocked(true);
     } catch {
       setPinError('The browser blocked storage changes, so the local PIN cannot be reset here.');
     }
@@ -687,7 +687,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const lockApp = () => {
     if (!pinRecord) {
-      tell('Set your four-digit PIN in Privacy & app PIN before locking Master Chat.', 'info');
+      tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
       return;
     }
     setConversationFullscreen(false);
@@ -844,7 +844,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         </button>)}
         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
       </div>
-      <div className="master-chat-account"><span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span><span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span><div className="master-chat-account-actions"><label className={'master-chat-signout master-chat-avatar-change'+(avatarBusy?' busy':'')} title={avatarBusy?'Saving profile picture…':'Change profile picture'} aria-label="Change profile picture"><ImagePlus size={15}/><input type="file" accept="image/*" aria-label="Choose profile picture" disabled={avatarBusy} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void saveProfileAvatar(file);}}/></label>{profile.avatar_data && <button type="button" className="master-chat-signout" title="Remove profile picture" aria-label="Remove profile picture" disabled={avatarBusy} onClick={()=>void removeProfileAvatar()}><Trash2 size={14}/></button>}<button className="master-chat-signout" title={pinRecord?'Lock Master Chat':'Set your four-digit app PIN'} onClick={lockApp}><LockKeyhole size={15}/></button><button className="master-chat-signout" title={pinRecord?'Change Master Chat PIN':'Set four-digit Master Chat PIN'} onClick={() => {setPinChangeOpen(true);setPinChangeError('');setPinCurrentValue('');setPinNewValue('');setPinNewConfirmValue('');}}><ShieldCheck size={15}/></button><button className="master-chat-signout" title="Sign out" onClick={() => void signOut()}><LogIn size={15}/></button></div></div>
+      <div className="master-chat-account"><span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span><span className="master-chat-person-meta"><b>{profile.username}</b><small><span className="master-chat-live-dot"/> {live ? 'Connected' : 'Reconnecting…'}</small></span><div className="master-chat-account-actions"><label className={'master-chat-signout master-chat-avatar-change'+(avatarBusy?' busy':'')} title={avatarBusy?'Saving profile picture…':'Change profile picture'} aria-label="Change profile picture"><ImagePlus size={15}/><input type="file" accept="image/*" aria-label="Choose profile picture" disabled={avatarBusy} onChange={event=>{const file=event.currentTarget.files?.[0]??null;event.currentTarget.value='';void saveProfileAvatar(file);}}/></label>{profile.avatar_data && <button type="button" className="master-chat-signout" title="Remove profile picture" aria-label="Remove profile picture" disabled={avatarBusy} onClick={()=>void removeProfileAvatar()}><Trash2 size={14}/></button>}<button className="master-chat-signout" title={pinRecord?'Lock Master Chat':'Optional app PIN settings'} onClick={lockApp}><LockKeyhole size={15}/></button><button className="master-chat-signout" title={pinRecord?'Change Master Chat PIN':'Set optional Master Chat PIN'} onClick={() => {setPinChangeOpen(true);setPinChangeError('');setPinCurrentValue('');setPinNewValue('');setPinNewConfirmValue('');}}><ShieldCheck size={15}/></button><button className="master-chat-signout" title="Sign out" onClick={() => void signOut()}><LogIn size={15}/></button></div></div>
     </aside>
     <div className="master-chat-main">
       {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
@@ -873,7 +873,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <form className="master-chat-pin-modal" onSubmit={changeLocalPin} aria-label="Change local app PIN">
         <button type="button" className="master-chat-pin-close" title="Close PIN settings" onClick={() => setPinChangeOpen(false)}><X size={18}/></button>
         <span className="master-chat-pin-icon"><ShieldCheck size={23}/></span><h3>Privacy &amp; app PIN</h3>
-        <p>A four-digit PIN is required to unlock Master Chat in this browser. It is separate from your account password and does not encrypt online message content.</p>
+        <p>Creating a four-digit PIN is optional. If you cancel, you can keep using Master Chat without one and set it later here. The PIN is separate from your account password and does not encrypt online message content.</p>
         {pinRecord && <label>Current PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinCurrentValue} onChange={event=>setPinCurrentValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>}
         <label>{pinRecord?'New four-digit PIN':'Create four-digit PIN'}<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewValue} onChange={event=>setPinNewValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
         <label>Confirm new PIN<input inputMode="numeric" type="password" autoComplete="off" maxLength={4} pattern="[0-9]{4}" value={pinNewConfirmValue} onChange={event=>setPinNewConfirmValue(event.target.value.replace(/\D/g,'').slice(0,4))} required/></label>
