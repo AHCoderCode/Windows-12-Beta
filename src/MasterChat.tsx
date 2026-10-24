@@ -883,6 +883,42 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     }
   };
 
+  const cancelVoiceRecording = () => {
+    if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+    voiceLimitTimerRef.current = null;
+    const recorder = voiceRecorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* Recorder may already be stopping. */ }
+      }
+    }
+    voiceRecorderRef.current = null;
+    voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+    voiceStreamRef.current = null;
+    voiceChunksRef.current = [];
+    setRecordingVoice(false);
+  };
+
+  useEffect(() => () => {
+    if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+    const recorder = voiceRecorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* Ignore during unmount. */ }
+      }
+    }
+    voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+    voiceStreamRef.current = null;
+    voiceRecorderRef.current = null;
+    voiceChunksRef.current = [];
+  }, []);
+
   const openCreateGroup = () => {
     setGroupDialogMode('create');
     setGroupNameDraft('');
@@ -1106,7 +1142,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         tell('Message was not deleted. Only the original sender can delete their message for everyone.', 'error');
       } else {
         setMessages(current => current.filter(item => item.id !== message.id));
-        tell('Message deleted for everyone.', 'success');
+        // Only the sender's own storage object can be removed; database RLS prevents cross-user deletion.
+        if (message.attachment_path) {
+          const { error: storageError } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).remove([message.attachment_path]);
+          if (storageError) tell('Message deleted for everyone. Its private attachment will be cleaned up separately.', 'info');
+          else tell('Message and its private attachment deleted for everyone.', 'success');
+        } else {
+          tell('Message deleted for everyone.', 'success');
+        }
       }
     } catch {
       tell('Could not delete this message because the connection failed.', 'error');
@@ -1462,6 +1505,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }, [iosMode, activePerson, activeGroup, pinUnlocked]);
 
   const lockApp = () => {
+    if (voiceRecorderRef.current) cancelVoiceRecording();
     if (!pinRecord) {
       tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
       return;
@@ -1516,6 +1560,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const signOut = async () => {
     if (!supabaseClient) return;
+    if (voiceRecorderRef.current) cancelVoiceRecording();
     const { error } = await supabaseClient.auth.signOut();
     if (error) tell('Could not sign out. Please try again.', 'error');
     else {
@@ -1620,7 +1665,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
         {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
-          if (recordingVoice) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          if (voiceRecorderRef.current) { tell('Stop your voice recording before switching chats.', 'info'); return; }
           setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
         }}>
           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
@@ -1635,7 +1680,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       </div>
       <div className="master-chat-people master-chat-groups-list">
         {filteredGroups.map(group => <button type="button" className={'master-chat-person '+(activeGroup?.id === group.id ? 'active' : '')} key={group.id} onClick={() => {
-          if (recordingVoice) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          if (voiceRecorderRef.current) { tell('Stop your voice recording before switching chats.', 'info'); return; }
           setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(null); setActiveGroup(group); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
         }}>
           <span className="master-chat-avatar">{group.avatar_data ? <img src={group.avatar_data} alt=""/> : group.name.slice(0, 1).toUpperCase()}</span>
