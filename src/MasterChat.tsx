@@ -1666,22 +1666,63 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
         </header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
-        <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
+        {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
+        <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Messages and attachments are restricted by account and group membership policies, but they are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
-          {!conversationMessages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>Say hello to {activePerson.username}</b><p>Only the conversation participants can retrieve messages through the app. Message text is not end-to-end encrypted.</p></div>}
+          {!conversationMessages.length && <div className="master-chat-first-message"><span className="master-chat-orb"><MessageCircle size={21}/></span><b>{activeGroup ? 'Say hello to ' + activeGroup.name : 'Say hello to ' + (activePerson?.username ?? 'your contact')}</b><p>{activeGroup ? 'Only current group members can read this group conversation.' : 'Only the conversation participants can retrieve messages through the app.'} Message text is not end-to-end encrypted.</p></div>}
           {conversationMessages.map((message, index) => {
             const mine = message.sender_id === profile.id;
             const previous = conversationMessages[index - 1];
             const grouped = previous?.sender_id === message.sender_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
+            const messageType = message.message_type ?? 'text';
+            const senderProfile = activeGroup ? (mine ? profile : people.find(person => person.id === message.sender_id)) : activePerson;
+            const senderName = senderProfile?.username ?? 'Group member';
+            const avatarData = senderProfile?.avatar_data ?? null;
+            const attachmentUrl = message.attachment_url;
             return <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')} key={message.id}>
-              {!mine && !grouped && <span className="master-chat-tiny-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}</span>}
-              <div className="master-chat-message-wrap"><div className="master-chat-message-content"><div className="master-chat-bubble">{message.body}</div><div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div></div><small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small></div>
+              {!mine && !grouped && <span className="master-chat-tiny-avatar">{isValidAvatarData(avatarData) ? <img src={avatarData ?? ''} alt=""/> : senderName.slice(0, 1).toUpperCase()}</span>}
+              <div className="master-chat-message-wrap">
+                {activeGroup && !mine && <small className="master-chat-group-sender">{senderName}</small>}
+                <div className="master-chat-message-content">
+                  {messageType === 'text'
+                    ? <div className="master-chat-bubble">{message.body}</div>
+                    : messageType === 'voice'
+                      ? <div className="master-chat-attachment-card master-chat-voice-card">
+                          <div className="master-chat-attachment-heading"><span className="master-chat-attachment-icon"><Mic size={17}/></span><span><b>Voice message</b><small>{Math.floor((message.voice_duration_ms ?? 0) / 1000)}s · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB</small></span></div>
+                          {attachmentUrl ? <audio className="master-chat-voice-player" controls preload="metadata" src={attachmentUrl}/> : <span className="master-chat-attachment-unavailable">Preparing secure audio…</span>}
+                        </div>
+                      : <div className="master-chat-attachment-card">
+                          {message.attachment_mime?.startsWith('image/')
+                            ? attachmentUrl
+                              ? <a className="master-chat-image-attachment" href={attachmentUrl} target="_blank" rel="noreferrer" title="Open image"><img src={attachmentUrl} alt={message.attachment_name ?? 'Shared image'} loading="lazy"/></a>
+                              : <span className="master-chat-attachment-unavailable">Preparing secure image…</span>
+                            : <a className="master-chat-file-attachment" href={attachmentUrl ?? undefined} target="_blank" rel="noreferrer" download={message.attachment_name ?? 'attachment'} onClick={event => { if (!attachmentUrl) event.preventDefault(); }}>
+                                <span className="master-chat-attachment-icon"><FileText size={18}/></span>
+                                <span className="master-chat-file-meta"><b>{message.attachment_name ?? 'Attachment'}</b><small>{message.attachment_mime ?? 'File'} · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB{!attachmentUrl ? ' · Preparing…' : ''}</small></span>
+                                <Download size={16}/>
+                              </a>}
+                        </div>}
+                  <div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div>
+                </div>
+                <small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small>
+              </div>
             </div>;
           })}
           <div ref={endRef}/>
         </div>
         <form className="master-chat-composer" onSubmit={event => void sendMessage(event)}>
-          <div className="master-chat-composer-box"><textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={'Message '+activePerson.username+'…'} aria-label="Write a message"/><div className="master-chat-composer-footer"><small>Enter to send · Shift + Enter for a new line · {draft.length}/2000</small><button type="submit" disabled={!draft.trim() || sending} aria-label="Send message">{sending ? <span className="master-chat-spinner small"/> : <Send size={16}/>}</button></div></div>
+          <input ref={attachmentInputRef} className="master-chat-file-input" type="file" accept="*/*" aria-label="Choose attachment (videos are not allowed)" onChange={handleAttachmentSelection}/>
+          <div className="master-chat-composer-box">
+            <textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={activeGroup ? 'Message ' + activeGroup.name + '…' : 'Message ' + (activePerson?.username ?? '') + '…'} aria-label="Write a message" disabled={attachmentBusy}/>
+            <div className="master-chat-composer-tools">
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
+              <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : 'Record a voice message'}><Mic size={16}/><span>{recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
+              {recordingVoice && <span className="master-chat-recording-indicator"><i/> Recording · 2 min max</span>}
+              {attachmentBusy && <span className="master-chat-attachment-progress"><span className="master-chat-spinner small"/> Sending…</span>}
+            </div>
+            <div className="master-chat-composer-footer"><small>Enter to send · Shift + Enter for a new line · {draft.length}/2000</small><button type="submit" disabled={!draft.trim() || sending || attachmentBusy} aria-label="Send message">{sending ? <span className="master-chat-spinner small"/> : <Send size={16}/>}</button></div>
+          </div>
         </form>
       </>}
     </div>
