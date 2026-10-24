@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
@@ -312,7 +312,88 @@ export async function processMasterChatScheduledMessages() {
 const validUsername = (value: string) => /^[a-zA-Z0-9_]{3,20}$/.test(value);
 const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell.invalid';
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const formatVoiceTime = (seconds: number) => {
+  const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
+};
+const VOICE_WAVEFORM = [8,13,19,11,23,15,9,17,25,12,20,15,8,18,27,12,22,16,10,24,14,19,9,26,15,21,11,17,24,13,8,20,15,26,12,18];
 
+function MasterChatVoicePlayer({ src, durationMs }: { src: string; durationMs?: number | null }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(Math.max(0, (durationMs ?? 0) / 1000));
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(Math.max(0, (durationMs ?? 0) / 1000));
+    setLoadError(false);
+    const onTimeUpdate = () => setCurrentTime(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+    const onLoadedMetadata = () => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) setDuration(audio.duration);
+      setLoadError(false);
+    };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => { setPlaying(false); setCurrentTime(Number.isFinite(audio.duration) ? audio.duration : 0); };
+    const onError = () => { setPlaying(false); setLoadError(true); };
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+    return () => {
+      audio.pause();
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+    };
+  }, [src, durationMs]);
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio || loadError) return;
+    if (audio.paused) {
+      setLoadError(false);
+      void audio.play().catch(() => { setPlaying(false); setLoadError(true); });
+    } else audio.pause();
+  };
+  const seek = (value: string) => {
+    const audio = audioRef.current;
+    const next = Number(value);
+    if (!audio || !Number.isFinite(next)) return;
+    audio.currentTime = next;
+    setCurrentTime(next);
+  };
+  const seekMax = Math.max(1, duration);
+  const progress = Math.min(1, Math.max(0, currentTime / seekMax));
+
+  return <div className="master-chat-voice-player-shell">
+    <audio ref={audioRef} className="master-chat-audio-element" preload="metadata" src={src}/>
+    <button type="button" className="master-chat-voice-play" onClick={togglePlayback} disabled={loadError}
+      title={playing ? 'Pause voice message' : 'Play voice message'} aria-label={playing ? 'Pause voice message' : 'Play voice message'}>
+      {playing ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor"/>}
+    </button>
+    <div className="master-chat-voice-timeline">
+      <div className="master-chat-voice-wave" aria-hidden="true">
+        {VOICE_WAVEFORM.map((height, index) => <span key={index} className={index / VOICE_WAVEFORM.length <= progress ? 'played' : ''}
+          style={{height: height + 'px'}}/>)}
+      </div>
+      <input className="master-chat-voice-seek" aria-label="Seek voice message" type="range" min={0} max={seekMax} step={0.1}
+        value={Math.min(currentTime, seekMax)} onChange={event => seek(event.target.value)} disabled={loadError}/>
+      <div className="master-chat-voice-time"><span>{formatVoiceTime(currentTime)}</span><span>{formatVoiceTime(duration)}</span></div>
+    </div>
+    {loadError && <p className="master-chat-voice-error" role="status">Audio could not load. Reopen the conversation to refresh its secure audio link.</p>}
+  </div>;
+}
 
 function MasterChatExitButton({ onClose, className = 'master-chat-close-app', portalTarget }: { onClose?: () => void; className?: string; portalTarget?: HTMLElement | null }) {
   if (!onClose) return null;
@@ -989,9 +1070,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         upsert: false,
       });
       if (uploadError) {
-        throw new Error(/size|limit/i.test(uploadError.message)
-          ? 'This file exceeds the 15 MB attachment limit.'
-          : 'The file could not be uploaded securely. Check the connection and storage policies.');
+        const reason = String(uploadError.message ?? '');
+        if (/size|limit/i.test(reason)) throw new Error('This file exceeds the 15 MB attachment limit.');
+        if (/row-level security|permission denied|accessdenied|unauthorized/i.test(reason)) {
+          throw new Error((type === 'voice' ? 'Voice message upload' : 'File upload') +
+            ' was rejected by the private Storage security policy. The file was not saved. Refresh the conversation, confirm you are signed in, and retry. (' + reason.slice(0, 120) + ')');
+        }
+        throw new Error((type === 'voice' ? 'Voice message upload failed' : 'File upload failed') +
+          ': ' + (reason.slice(0, 160) || 'Storage returned no details') + '. Check the connection and try again.');
       }
       const row = {
         sender_id: profile.id,
@@ -1103,7 +1189,11 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         const blob = new Blob(voiceChunksRef.current, { type });
         voiceChunksRef.current = [];
         if (blob.size > 0 && elapsed >= 500) {
-          const file = new File([blob], 'voice-message-' + Date.now() + '.' + extension, { type: type.split(';')[0] });
+          // Keep the actual audio MIME type. The private Storage policy reserves the
+          // .webm filename suffix for MIME-verified audio; .audio avoids browsers
+          // which omit that multipart metadata during object creation.
+          const storageExtension = extension === 'webm' ? 'audio' : extension;
+          const file = new File([blob], 'voice-message-' + Date.now() + '.' + storageExtension, { type: type.split(';')[0] });
           void sendAttachment(file, 'voice', elapsed, target);
         } else {
           tell('That voice note was too short. Hold the microphone a little longer and try again.', 'info');
@@ -2136,7 +2226,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
                     : messageType === 'voice'
                       ? <div className="master-chat-attachment-card master-chat-voice-card">
                           <div className="master-chat-attachment-heading"><span className="master-chat-attachment-icon"><Mic size={17}/></span><span><b>Voice message</b><small>{Math.floor((message.voice_duration_ms ?? 0) / 1000)}s · {Math.max(1, Math.round((message.attachment_size ?? 0) / 1024))} KB</small></span></div>
-                          {attachmentUrl ? <audio className="master-chat-voice-player" controls preload="metadata" src={attachmentUrl}/> : <span className="master-chat-attachment-unavailable">Preparing secure audio…</span>}
+                          {attachmentUrl
+                            ? <MasterChatVoicePlayer key={message.id} src={attachmentUrl} durationMs={message.voice_duration_ms}/>
+                            : <span className="master-chat-attachment-unavailable">Preparing secure audio…</span>}
                         </div>
                       : <div className="master-chat-attachment-card">
                           {message.attachment_mime?.startsWith('image/')
