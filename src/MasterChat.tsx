@@ -138,6 +138,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const [deleteAccountStep, setDeleteAccountStep] = useState<0 | 1 | 2>(0);
   const [deleteAccountText, setDeleteAccountText] = useState('');
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
   const [deleteAccountBusy, setDeleteAccountBusy] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState('');
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -678,6 +679,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setAccountSettingsOpen(false);
     setDeleteAccountStep(1);
     setDeleteAccountText('');
+    setDeleteAccountPassword('');
     setDeleteAccountError('');
   };
 
@@ -685,6 +687,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     if (deleteAccountBusy) return;
     setDeleteAccountStep(0);
     setDeleteAccountText('');
+    setDeleteAccountPassword('');
     setDeleteAccountError('');
   };
 
@@ -694,9 +697,20 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setDeleteAccountError('Type DELETE exactly to confirm permanent account deletion.');
       return;
     }
+    if (!deleteAccountPassword) {
+      setDeleteAccountError('Enter your account password to verify that you own this account.');
+      return;
+    }
     setDeleteAccountBusy(true);
     setDeleteAccountError('');
     try {
+      const { data: reauthData, error: reauthError } = await supabaseClient.auth.signInWithPassword({
+        email: usernameEmail(profile.username),
+        password: deleteAccountPassword,
+      });
+      if (reauthError || reauthData.user?.id !== profile.id) {
+        throw new Error('The account password is incorrect. No deletion was performed.');
+      }
       const { data, error } = await supabaseClient.functions.invoke('delete-master-chat-account', {
         body: { confirmation: 'DELETE' },
       });
@@ -744,6 +758,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setPinChangeOpen(false);
       setDeleteAccountStep(0);
       setDeleteAccountText('');
+      setDeleteAccountPassword('');
       setNotice('Your Master Chat account and its chat data have been permanently deleted.');
       setNoticeKind('success');
     } catch (error) {
@@ -1049,11 +1064,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <p className="eyebrow">WARNING 2 OF 2 · FINAL CONFIRMATION</p>
           <h3 id="master-chat-delete-title">This action cannot be undone.</h3>
           <p className="master-chat-delete-account-intro">The next button will permanently delete <b>@{profile.username}</b>, and remove the Master Chat data linked to this account. Please make sure you truly want to continue.</p>
+          <label className="master-chat-delete-confirm-label">Confirm your current account password
+            <input autoComplete="current-password" type="password" value={deleteAccountPassword} onChange={event=>{setDeleteAccountPassword(event.target.value);setDeleteAccountError('');}} placeholder="Account password" aria-label="Current account password for deletion confirmation" />
+          </label>
           <label className="master-chat-delete-confirm-label">Type <code>DELETE</code> to confirm
             <input autoFocus autoComplete="off" spellCheck={false} value={deleteAccountText} onChange={event=>{setDeleteAccountText(event.target.value);setDeleteAccountError('');}} placeholder="Type DELETE" aria-label="Type DELETE to confirm account deletion" />
           </label>
           {deleteAccountError && <p className="master-chat-notice error" role="alert">{deleteAccountError}</p>}
-          <div className="master-chat-delete-actions"><button type="button" className="master-chat-delete-cancel" disabled={deleteAccountBusy} onClick={cancelDeleteAccount}>Cancel</button><button type="button" className="master-chat-account-delete-primary" disabled={deleteAccountBusy || deleteAccountText!=='DELETE'} onClick={()=>void permanentlyDeleteAccount()}>{deleteAccountBusy?<><span className="master-chat-spinner small"/> Deleting…</>:<>Permanently delete account <Trash2 size={16}/></>}</button></div>
+          <div className="master-chat-delete-actions"><button type="button" className="master-chat-delete-cancel" disabled={deleteAccountBusy} onClick={cancelDeleteAccount}>Cancel</button><button type="button" className="master-chat-account-delete-primary" disabled={deleteAccountBusy || deleteAccountText!=='DELETE' || !deleteAccountPassword} onClick={()=>void permanentlyDeleteAccount()}>{deleteAccountBusy?<><span className="master-chat-spinner small"/> Deleting…</>:<>Permanently delete account <Trash2 size={16}/></>}</button></div>
           <p className="master-chat-delete-final-note">This is the second and final warning. There is no undo.</p>
         </>}
       </section>
