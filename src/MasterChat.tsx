@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Copy, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
@@ -35,6 +35,7 @@ function asLocalDateTimeInput(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+type ChatMessageReadReceipt = { message_id: string; user_id: string; read_at: string };
 type ChatMessage = {
   id: string;
   sender_id: string;
@@ -77,6 +78,12 @@ function isVideoFile(file: File, messageType: 'file' | 'voice' = 'file') {
 }
 function safeAttachmentName(name: string) {
   return name.replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 180) || 'attachment.txt';
+}
+function mergeReadReceiptRows(current: ChatMessageReadReceipt[], incoming: ChatMessageReadReceipt[]) {
+  const byKey = new Map<string, ChatMessageReadReceipt>();
+  for (const row of current) byKey.set(row.message_id + ':' + row.user_id, row);
+  for (const row of incoming) byKey.set(row.message_id + ':' + row.user_id, row);
+  return [...byKey.values()];
 }
 function mergeScopedMessages(current: ChatMessage[], incoming: ChatMessage[], userId: string, peerId: string | null, groupId: string | null) {
   const inScope = (message: ChatMessage) => groupId
@@ -312,6 +319,20 @@ export async function processMasterChatScheduledMessages() {
 const validUsername = (value: string) => /^[a-zA-Z0-9_]{3,20}$/.test(value);
 const usernameEmail = (username: string) => username.toLowerCase() + '@aeroshell.invalid';
 const shortTime = (value: string) => new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const formatMessageDay = (value: string) => {
+  const date = new Date(value);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString([], {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+  });
+};
 const formatVoiceTime = (seconds: number) => {
   const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
@@ -428,6 +449,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupError, setGroupError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [readReceipts, setReadReceipts] = useState<ChatMessageReadReceipt[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [pendingImage, setPendingImage] = useState<{
     file: File;
@@ -499,6 +521,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceStartRef = useRef(0);
   const voiceLimitTimerRef = useRef<number | null>(null);
+  const readReceiptPendingRef = useRef(new Set<string>());
+  const activeMessageIdsRef = useRef(new Set<string>());
 
   const tell = (text: string, kind: 'error' | 'success' | 'info' = 'info') => {
     setNotice(text);
@@ -802,11 +826,51 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   useEffect(() => {
     if (!pinUnlocked || !supabaseClient || !session || !profile || (!activePerson && !activeGroup)) {
       setMessages([]);
+      setReadReceipts([]);
+      activeMessageIdsRef.current.clear();
       return;
     }
     let mounted = true;
     const groupId = activeGroup?.id ?? null;
     const peerId = activePerson?.id ?? null;
+    setReadReceipts([]);
+    activeMessageIdsRef.current.clear();
+
+    const syncReadReceipts = async (items: ChatMessage[]) => {
+      const ids = Array.from(new Set(items.map(item => item.id).filter(Boolean)));
+      if (!ids.length || !mounted) return;
+      const { data: existingData, error: existingError } = await supabaseClient.from('aeroshell_message_reads')
+        .select('message_id, user_id, read_at').in('message_id', ids);
+      if (!mounted) return;
+      if (existingError) {
+        console.warn('Master Chat read receipts could not be loaded:', existingError.message);
+        return;
+      }
+      const existing = (existingData ?? []) as ChatMessageReadReceipt[];
+      setReadReceipts(current => mergeReadReceiptRows(current, existing));
+      const alreadyReadByMe = new Set(existing.filter(row => row.user_id === profile.id).map(row => row.message_id));
+      const toMark = items.filter(message =>
+        message.sender_id !== profile.id &&
+        !alreadyReadByMe.has(message.id) &&
+        !readReceiptPendingRef.current.has(message.id)
+      );
+      if (!toMark.length) return;
+      const rows = toMark.map(message => ({ message_id: message.id, user_id: profile.id }));
+      rows.forEach(row => readReceiptPendingRef.current.add(row.message_id));
+      try {
+        const { data: inserted, error: insertError } = await supabaseClient.from('aeroshell_message_reads')
+          .upsert(rows, { onConflict: 'message_id,user_id', ignoreDuplicates: true })
+          .select('message_id, user_id, read_at');
+        if (!mounted) return;
+        if (insertError) {
+          console.warn('Master Chat could not mark messages as read:', insertError.message);
+          return;
+        }
+        setReadReceipts(current => mergeReadReceiptRows(current, (inserted ?? []) as ChatMessageReadReceipt[]));
+      } finally {
+        rows.forEach(row => readReceiptPendingRef.current.delete(row.message_id));
+      }
+    };
     setMessages(current => current.filter(message => groupId
       ? message.group_id === groupId
       : !message.group_id && !!peerId && (
@@ -829,7 +893,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }
       const enriched = await Promise.all(((data ?? []) as ChatMessage[]).map(withSignedAttachment));
       if (!mounted) return;
+      activeMessageIdsRef.current = new Set(enriched.map(message => message.id));
       setMessages(current => mergeScopedMessages(current, enriched, profile.id, peerId, groupId));
+      void syncReadReceipts(enriched);
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
@@ -848,18 +914,31 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         if (!mounted || !inScope) return;
         void withSignedAttachment(incoming).then(enriched => {
           if (!mounted) return;
+          activeMessageIdsRef.current.add(enriched.id);
           setMessages(current => mergeScopedMessages(current, [enriched], profile.id, peerId, groupId));
+          void syncReadReceipts([enriched]);
           window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
         });
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const deleted = payload.old as { id?: string };
-        if (mounted && deleted.id) setMessages(current => current.filter(message => message.id !== deleted.id));
+        if (mounted && deleted.id) {
+          activeMessageIdsRef.current.delete(deleted.id);
+          setMessages(current => current.filter(message => message.id !== deleted.id));
+          setReadReceipts(current => current.filter(receipt => receipt.message_id !== deleted.id));
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_message_reads' }, payload => {
+        const receipt = payload.new as ChatMessageReadReceipt;
+        if (!mounted || !receipt.message_id || !receipt.user_id || !activeMessageIdsRef.current.has(receipt.message_id)) return;
+        setReadReceipts(current => mergeReadReceiptRows(current, [receipt]));
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_message_hides', filter: 'user_id=eq.' + profile.id }, payload => {
         const hidden = payload.new as { message_id?: string };
         if (!mounted || !hidden.message_id) return;
+        activeMessageIdsRef.current.delete(hidden.message_id);
         setMessages(current => current.filter(message => message.id !== hidden.message_id));
+        setReadReceipts(current => current.filter(receipt => receipt.message_id !== hidden.message_id));
       }).subscribe();
     return () => {
       mounted = false;
@@ -2400,6 +2479,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
           <span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>
           {activeGroup && <button type="button" className="master-chat-group-info-button" title="Group info and members" aria-label="Group info and members" onClick={openGroupManagement}><Users size={17}/><span>Group info</span></button>}
           {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
+          {onClose && <button type="button" className="master-chat-header-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}
         </header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Messages and attachments are restricted by account and group membership policies, but they are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
@@ -2408,13 +2488,28 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
           {conversationMessages.map((message, index) => {
             const mine = message.sender_id === profile.id;
             const previous = conversationMessages[index - 1];
-            const grouped = previous?.sender_id === message.sender_id && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
+            const messageDateKey = new Date(message.created_at).toDateString();
+            const previousDateKey = previous ? new Date(previous.created_at).toDateString() : '';
+            const isFirstOfDay = !previous || previousDateKey !== messageDateKey;
+            const grouped = previous?.sender_id === message.sender_id && previousDateKey === messageDateKey && new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60 * 1000;
             const messageType = message.message_type ?? 'text';
+            const receiptsForMessage = readReceipts.filter(receipt => receipt.message_id === message.id);
+            const expectedReaderIds = activeGroup
+              ? groupMembers.filter(member => member.user_id !== profile.id).map(member => member.user_id)
+              : activePerson ? [activePerson.id] : [];
+            const readCount = expectedReaderIds.filter(userId => receiptsForMessage.some(receipt => receipt.user_id === userId)).length;
+            const isRead = mine && expectedReaderIds.length > 0 && readCount === expectedReaderIds.length;
+            const latestReadAt = receiptsForMessage.filter(receipt => expectedReaderIds.includes(receipt.user_id)).sort((a, b) => b.read_at.localeCompare(a.read_at))[0]?.read_at;
+            const receiptTitle = activeGroup
+              ? 'Seen by ' + readCount + ' of ' + expectedReaderIds.length + ' members'
+              : isRead ? 'Read at ' + shortTime(latestReadAt ?? message.created_at) : 'Sent · not seen yet';
             const senderProfile = activeGroup ? (mine ? profile : people.find(person => person.id === message.sender_id)) : activePerson;
             const senderName = senderProfile?.username ?? 'Group member';
             const avatarData = senderProfile?.avatar_data ?? null;
             const attachmentUrl = message.attachment_url;
-            return <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')} key={message.id}>
+            return <Fragment key={message.id}>
+              {isFirstOfDay && <div className="master-chat-date-divider"><span>{formatMessageDay(message.created_at)}</span></div>}
+              <div className={'master-chat-message-row '+(mine ? 'mine' : 'theirs')}>
               {!mine && !grouped && <span className="master-chat-tiny-avatar">{isValidAvatarData(avatarData) ? <img src={avatarData ?? ''} alt=""/> : senderName.slice(0, 1).toUpperCase()}</span>}
               <div className="master-chat-message-wrap">
                 {activeGroup && !mine && <small className="master-chat-group-sender">{senderName}</small>}
@@ -2442,9 +2537,10 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
                         </div>}
                   <div className="master-chat-message-actions"><button type="button" title="Hide this message for me" aria-label="Hide this message for me" disabled={messageActionId === message.id} onClick={() => void hideMessage(message)}><EyeOff size={13}/></button>{mine && <button type="button" title="Delete for everyone" aria-label="Delete this message for everyone" disabled={messageActionId === message.id} onClick={() => void deleteMessageForEveryone(message)}><Trash2 size={13}/></button>}</div>
                 </div>
-                <small>{shortTime(message.created_at)}{mine ? ' · You' : ''}</small>
+                <small className="master-chat-message-meta"><span>{shortTime(message.created_at)}{mine ? ' · You' : ''}</span>{mine && <span className={'master-chat-read-ticks'+(isRead ? ' is-read' : '')} title={receiptTitle} aria-label={receiptTitle}><Check size={12}/><Check size={12}/></span>}</small>
               </div>
-            </div>;
+            </div>
+            </Fragment>;
           })}
           <div ref={endRef}/>
         </div>
