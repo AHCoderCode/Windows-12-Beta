@@ -66,6 +66,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
   const ringTimerRef = useRef<number | null>(null);
   const callExpiryTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const acceptingCallRef = useRef(false);
 
   const setCall = useCallback((next: CallView | null) => {
     activeCallRef.current = next;
@@ -363,7 +364,10 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
 
   const acceptCall = useCallback(async () => {
     const current = activeCallRef.current;
-    if (!enabled || !client || !profile || !current || current.direction !== 'incoming' || busy) return;
+    if (!enabled || !client || !profile || !current || current.direction !== 'incoming' || busy || acceptingCallRef.current) return;
+    // Synchronously lock acceptance before React's next render. This prevents a
+    // double-tap or synthetic second click from launching a competing accept flow.
+    acceptingCallRef.current = true;
     setBusy(true);
     // Keep the incoming-call controls in place while permissions and relay setup run.
     // Swapping the Accept button for Cancel during a touch can cause the same tap
@@ -400,13 +404,14 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       cleanupLocal();
       setNotice(message);
     } finally {
+      acceptingCallRef.current = false;
       setBusy(false);
     }
   }, [buildPeerConnection, busy, cleanupLocal, client, enabled, profile, replaySignals, setCall, turnServersForCall]);
 
   const rejectCall = useCallback(async () => {
     const current = activeCallRef.current;
-    if (!current) return;
+    if (!current || acceptingCallRef.current) return;
     try {
       if (client) await client.from('aeroshell_calls').update({ status: 'rejected' }).eq('id', current.id).eq('status', 'ringing');
     } finally {
@@ -432,7 +437,9 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     const endIfStillHere = async (callId: string, status: 'ended' | 'rejected') => {
       if (activeCallRef.current?.id === callId) {
         cleanupLocal();
-        setNotice(status === 'rejected' ? 'The call was declined.' : 'The other participant ended the call.');
+        setNotice(status === 'rejected'
+          ? 'The other participant declined the call or could not prepare secure audio. No connection was established.'
+          : 'The other participant ended the call.');
       }
     };
     const receiveCall = async (row: CallRow) => {
@@ -566,7 +573,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     )}
     {activeCall && createPortal(<div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label="Voice call controls">
       <section className="master-chat-call-card">
-        <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window"
+        <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window" disabled={busy}
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
         <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.username.slice(0,1).toUpperCase()}</div>
         <p className="eyebrow">AEROSHELL · VOICE ONLY</p>
