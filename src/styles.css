@@ -1814,3 +1814,15 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .ios-lock-pin-status-message{margin:10px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
 
 .master-chat-recipient-avatar>img{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+
+/* Keep the call launcher inside the message app in windowed mode so it cannot cover the OS window-close controls. */
+.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-voice-call-button{
+  position:absolute!important;
+  inset:auto!important;
+  top:8px!important;
+  right:10px!important;
+  bottom:auto!important;
+  left:auto!important;
+  z-index:12!important;
+}
+.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-conversation-header{padding-right:94px}
