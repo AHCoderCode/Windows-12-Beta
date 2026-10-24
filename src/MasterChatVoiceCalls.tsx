@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
 import { setSafeRemoteAudioVolume, VOICE_MICROPHONE_CONSTRAINTS } from './voiceAudio';
 
-type ChatProfile = { id: string; username: string };
+type ChatProfile = { id: string; username: string; avatar_data?: string | null };
 type CallRow = {
   id: string;
   caller_id: string;
@@ -529,7 +529,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
           <p>Select a Master Chat member. The other person must accept before audio can connect.</p>
           <div className="master-chat-recipient-picker-list">
             {people.filter(person => person.id !== profile.id).map(person => <button type="button" key={person.id} disabled={busy || !!activeCall} onClick={() => void startCall(person)}>
-              <span className="master-chat-recipient-avatar">{person.username.slice(0,1).toUpperCase()}</span>
+              <span className="master-chat-recipient-avatar">{person.avatar_data ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
               <span className="master-chat-recipient-label"><b>{person.username}</b><small>Start an audio call</small></span>
               <PhoneCall size={17}/>
             </button>)}
