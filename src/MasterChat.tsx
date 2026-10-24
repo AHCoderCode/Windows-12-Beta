@@ -891,6 +891,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setVoicePreparing(false);
       voiceStreamRef.current?.getTracks().forEach(track => track.stop());
       voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      voiceChunksRef.current = [];
       setRecordingVoice(false);
       tell(error instanceof Error && /denied|permission/i.test(error.message)
         ? 'Microphone permission was denied. Allow microphone access in your browser settings, then retry.'
