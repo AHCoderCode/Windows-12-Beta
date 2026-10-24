@@ -683,7 +683,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const sendMessage = async (event?: FormEvent) => {
     event?.preventDefault();
     const body = draft.trim();
-    if (!supabaseClient || !profile || !activePerson || !body || sending) return;
+    if (!supabaseClient || !profile || (!activePerson && !activeGroup) || !body || sending || attachmentBusy) return;
     if (body.length > 2000) {
       tell('Messages can be up to 2,000 characters.', 'error');
       return;
@@ -691,12 +691,19 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setSending(true);
     try {
       const { data, error } = await supabaseClient.from('aeroshell_messages')
-        .insert({ sender_id: profile.id, recipient_id: activePerson.id, body })
-        .select('id, sender_id, recipient_id, body, created_at').single();
-      if (error) tell('Message did not send. Check your connection and database policies.', 'error');
+        .insert({
+          sender_id: profile.id,
+          recipient_id: activeGroup ? null : activePerson!.id,
+          group_id: activeGroup?.id ?? null,
+          body,
+          message_type: 'text',
+        })
+        .select(MESSAGE_FIELDS).single();
+      if (error) tell('Message did not send. Check the connection and group/message policies.', 'error');
       else if (data) {
         setDraft('');
-        setMessages(current => current.some(message => message.id === data.id) ? current : [...current, data as ChatMessage]);
+        const enriched = await withSignedAttachment(data as ChatMessage);
+        setMessages(current => mergeScopedMessages(current, [enriched], profile.id, activePerson?.id ?? null, activeGroup?.id ?? null));
         tell('Message sent.', 'success');
         inputRef.current?.focus();
       }
@@ -704,6 +711,351 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       tell('Message did not send because the connection was interrupted. Please try again.', 'error');
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendAttachment = async (
+    file: File,
+    type: 'file' | 'voice' = 'file',
+    durationMs = 0,
+    target: { person: ChatProfile | null; group: ChatGroup | null } = { person: activePerson, group: activeGroup },
+  ) => {
+    if (!supabaseClient || !profile || (!target.person && !target.group) || attachmentBusy) return;
+    if (isVideoFile(file)) {
+      tell('Video attachments are disabled. Send an image, document, text/code file, or voice note instead.', 'error');
+      return;
+    }
+    if (file.size < 1 || file.size > MAX_ATTACHMENT_BYTES) {
+      tell('Files must be smaller than 15 MB.', 'error');
+      return;
+    }
+    if (type === 'voice' && (!file.type.toLowerCase().startsWith('audio/') || durationMs < 1 || durationMs > 120000)) {
+      tell('That voice note could not be prepared. Record a note up to two minutes long and retry.', 'error');
+      return;
+    }
+    setAttachmentBusy(true);
+    setNotice('');
+    const fileName = safeAttachmentName(file.name).slice(0, 180);
+    const mime = file.type || (/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css|sql|xml|yml|yaml)$/i.test(fileName) ? 'text/plain' : 'application/octet-stream');
+    const objectName = Date.now() + '-' + crypto.randomUUID() + '-' + fileName;
+    const path = target.group
+      ? 'groups/' + target.group.id + '/' + profile.id + '/' + objectName
+      : 'direct/' + profile.id + '/' + target.person!.id + '/' + objectName;
+    try {
+      const { error: uploadError } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).upload(path, file, {
+        contentType: mime,
+        cacheControl: '3600',
+        upsert: false,
+      });
+      if (uploadError) {
+        throw new Error(/size|limit/i.test(uploadError.message)
+          ? 'This file exceeds the 15 MB attachment limit.'
+          : 'The file could not be uploaded securely. Check the connection and storage policies.');
+      }
+      const row = {
+        sender_id: profile.id,
+        recipient_id: target.group ? null : target.person!.id,
+        group_id: target.group?.id ?? null,
+        body: '',
+        message_type: type,
+        attachment_path: path,
+        attachment_name: fileName,
+        attachment_mime: mime,
+        attachment_size: file.size,
+        voice_duration_ms: type === 'voice' ? Math.max(1, Math.min(120000, Math.round(durationMs))) : null,
+      };
+      const { data, error } = await supabaseClient.from('aeroshell_messages').insert(row).select(MESSAGE_FIELDS).single();
+      if (error || !data) {
+        await supabaseClient.storage.from(ATTACHMENT_BUCKET).remove([path]).catch(() => undefined);
+        throw new Error('The upload finished, but the message could not be saved. Check the group membership and message policies.');
+      }
+      const enriched = await withSignedAttachment(data as ChatMessage);
+      setMessages(current => mergeScopedMessages(
+        current,
+        [enriched],
+        profile.id,
+        target.person?.id ?? null,
+        target.group?.id ?? null,
+      ));
+      tell(type === 'voice' ? 'Voice message sent.' : 'Attachment sent.', 'success');
+    } catch (error) {
+      tell(error instanceof Error ? error.message : 'Could not send this attachment. Please retry.', 'error');
+    } finally {
+      setAttachmentBusy(false);
+    }
+  };
+
+  const handleAttachmentSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = '';
+    if (file) void sendAttachment(file);
+  };
+
+  const sendPastedTextFile = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!pastedFileContent.trim()) {
+      tell('Paste some text or code into the file first.', 'error');
+      return;
+    }
+    const requestedName = safeAttachmentName(pastedFileName.trim() || 'notes.txt');
+    const extension = requestedName.includes('.') ? requestedName.split('.').pop()?.toLowerCase() : '';
+    const mimeByExtension: Record<string, string> = {
+      txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+      js: 'text/javascript', jsx: 'text/javascript', ts: 'text/plain', tsx: 'text/plain',
+      py: 'text/x-python', html: 'text/html', css: 'text/css', sql: 'text/plain', xml: 'application/xml',
+      yaml: 'text/plain', yml: 'text/plain',
+    };
+    const file = new File([pastedFileContent], requestedName, { type: mimeByExtension[extension ?? ''] ?? 'text/plain' });
+    const target = { person: activePerson, group: activeGroup };
+    setPastedFileOpen(false);
+    setPastedFileContent('');
+    void sendAttachment(file, 'file', 0, target);
+  };
+
+  const toggleVoiceRecording = async () => {
+    if (recordingVoice) {
+      voiceRecorderRef.current?.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      tell('Voice messages are not supported by this browser. Try a current version of Chrome, Edge, or Safari over HTTPS.', 'error');
+      return;
+    }
+    if (!supabaseClient || !profile || (!activePerson && !activeGroup) || attachmentBusy) return;
+    const target = { person: activePerson, group: activeGroup };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      voiceStartRef.current = Date.now();
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      voiceRecorderRef.current = recorder;
+      recorder.ondataavailable = event => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        tell('Voice recording failed. Check microphone permissions and try again.', 'error');
+        try { recorder.stop(); } catch { /* Recorder can already be stopped. */ }
+      };
+      recorder.onstop = () => {
+        if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
+        voiceLimitTimerRef.current = null;
+        stream.getTracks().forEach(track => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        setRecordingVoice(false);
+        const elapsed = Math.min(120000, Math.max(1, Date.now() - voiceStartRef.current));
+        const type = recorder.mimeType || voiceChunksRef.current[0]?.type || 'audio/webm';
+        const extension = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+        const blob = new Blob(voiceChunksRef.current, { type });
+        voiceChunksRef.current = [];
+        if (blob.size > 0 && elapsed >= 500) {
+          const file = new File([blob], 'voice-message-' + Date.now() + '.' + extension, { type: type.split(';')[0] });
+          void sendAttachment(file, 'voice', elapsed, target);
+        } else {
+          tell('That voice note was too short. Hold the microphone a little longer and try again.', 'info');
+        }
+      };
+      recorder.start(200);
+      setRecordingVoice(true);
+      tell('Recording voice message… Tap the microphone again to stop. Maximum duration: 2 minutes.', 'info');
+      voiceLimitTimerRef.current = window.setTimeout(() => {
+        if (voiceRecorderRef.current?.state === 'recording') {
+          voiceRecorderRef.current.stop();
+          tell('Two-minute recording limit reached. Sending your voice note…', 'info');
+        }
+      }, 120000);
+    } catch (error) {
+      voiceStreamRef.current?.getTracks().forEach(track => track.stop());
+      voiceStreamRef.current = null;
+      setRecordingVoice(false);
+      tell(error instanceof Error && /denied|permission/i.test(error.message)
+        ? 'Microphone permission was denied. Allow microphone access in your browser settings, then retry.'
+        : 'Could not start voice recording. Check microphone permissions and retry.', 'error');
+    }
+  };
+
+  const openCreateGroup = () => {
+    setGroupDialogMode('create');
+    setGroupNameDraft('');
+    setGroupAvatarDraft(null);
+    setGroupMemberSelection([]);
+    setGroupError('');
+    setGroupDialogOpen(true);
+    setAccountSettingsOpen(false);
+  };
+
+  const openGroupManagement = () => {
+    if (!activeGroup) return;
+    setGroupDialogMode('manage');
+    setGroupNameDraft(activeGroup.name);
+    setGroupAvatarDraft(activeGroup.avatar_data);
+    setGroupMemberSelection([]);
+    setGroupError('');
+    setGroupDialogOpen(true);
+  };
+
+  const handleGroupAvatarSelection = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const avatar = await compressImageForGroup(file);
+      setGroupAvatarDraft(avatar);
+      setGroupError('');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not prepare this group picture.');
+    }
+  };
+
+  const toggleGroupMemberSelection = (userId: string) => {
+    setGroupMemberSelection(current => current.includes(userId)
+      ? current.filter(id => id !== userId)
+      : current.length < 99 ? [...current, userId] : current);
+  };
+
+  const saveGroupDialog = async (event?: FormEvent) => {
+    event?.preventDefault();
+    if (!supabaseClient || !profile || groupBusy) return;
+    const name = groupNameDraft.trim();
+    if (!name || name.length > 60) {
+      setGroupError('Group names must contain 1–60 characters.');
+      return;
+    }
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      if (groupDialogMode === 'create') {
+        const { data, error } = await supabaseClient.rpc('aeroshell_create_group', {
+          p_name: name,
+          p_avatar_data: groupAvatarDraft,
+          p_member_ids: groupMemberSelection,
+        });
+        if (error || !data) throw new Error(error?.message ?? 'The group was not created.');
+        const createdId = data as string;
+        const loaded = await loadGroups(profile.id);
+        const created = loaded.find(group => group.id === createdId);
+        setActivePerson(null);
+        setActiveGroup(created ?? null);
+        setMessages([]);
+        setDraft('');
+        setGroupDialogOpen(false);
+        tell('Group created. You are an admin and can add members or promote other admins.', 'success');
+      } else {
+        if (!activeGroup || activeGroup.my_role !== 'admin') throw new Error('Only a group admin can edit group details.');
+        const { data, error } = await supabaseClient.from('aeroshell_groups')
+          .update({ name, avatar_data: groupAvatarDraft, updated_at: new Date().toISOString() })
+          .eq('id', activeGroup.id)
+          .select('id, name, avatar_data, created_by, updated_at').single();
+        if (error || !data) throw new Error('Group details were not saved. Only admins can edit the name and picture.');
+        await loadGroups(profile.id);
+        setActiveGroup(current => current?.id === data.id ? { ...current, ...data } : current);
+        setGroupDialogOpen(false);
+        tell('Group details updated.', 'success');
+      }
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not save this group.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const addSelectedGroupMembers = async () => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || !groupMemberSelection.length || groupBusy) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members').insert(
+        groupMemberSelection.map(user_id => ({ group_id: activeGroup.id, user_id, role: 'member', added_by: profile.id })),
+      );
+      if (error) throw new Error('Could not add one or more members. Only admins can invite members to this group.');
+      setGroupMemberSelection([]);
+      await loadGroups(profile.id);
+      setGroupError('');
+      tell('Members added to the group.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not add group members.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const changeGroupMemberRole = async (member: ChatGroupMember) => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || groupBusy) return;
+    const role = member.role === 'admin' ? 'member' : 'admin';
+    setGroupBusy(true);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .update({ role }).eq('group_id', activeGroup.id).eq('user_id', member.user_id);
+      if (error) throw new Error(role === 'member'
+        ? 'Could not remove admin rights. A group must always keep at least one admin.'
+        : 'Could not promote this member to admin.');
+      await loadGroups(profile.id);
+      tell(role === 'admin' ? member.username + ' is now a group admin.' : member.username + ' is now a regular member.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not change this member’s role.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const removeGroupMember = async (member: ChatGroupMember) => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.my_role !== 'admin' || member.user_id === profile.id || groupBusy) return;
+    if (!window.confirm('Remove @' + member.username + ' from this group?')) return;
+    setGroupBusy(true);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .delete().eq('group_id', activeGroup.id).eq('user_id', member.user_id);
+      if (error) throw new Error('Could not remove this member. Confirm you are an admin.');
+      await loadGroups(profile.id);
+      tell(member.username + ' was removed from the group.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not remove this member.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const leaveActiveGroup = async () => {
+    if (!supabaseClient || !profile || !activeGroup || groupBusy) return;
+    if (!window.confirm('Leave "' + activeGroup.name + '"? You will stop receiving group messages.')) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_group_members')
+        .delete().eq('group_id', activeGroup.id).eq('user_id', profile.id);
+      if (error) throw new Error('You cannot leave while you are the last admin. Promote another member first.');
+      const groupName = activeGroup.name;
+      setActiveGroup(null);
+      setMessages([]);
+      await loadGroups(profile.id);
+      setGroupDialogOpen(false);
+      tell('You left ' + groupName + '.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not leave this group.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const deleteActiveGroup = async () => {
+    if (!supabaseClient || !profile || !activeGroup || activeGroup.created_by !== profile.id || groupBusy) return;
+    if (!window.confirm('Permanently delete "' + activeGroup.name + '" and its group messages for every member? This cannot be undone.')) return;
+    setGroupBusy(true);
+    setGroupError('');
+    try {
+      const { error } = await supabaseClient.from('aeroshell_groups').delete().eq('id', activeGroup.id);
+      if (error) throw new Error('Only the original group creator can delete the group.');
+      setActiveGroup(null);
+      setMessages([]);
+      await loadGroups(profile.id);
+      setGroupDialogOpen(false);
+      tell('Group deleted.', 'success');
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Could not delete this group.');
+    } finally {
+      setGroupBusy(false);
     }
   };
 
