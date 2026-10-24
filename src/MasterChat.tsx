@@ -1,13 +1,97 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, EyeOff, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Minimize2, MoreHorizontal, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
-type ChatMessage = { id: string; sender_id: string; recipient_id: string; body: string; created_at: string };
+type MessageType = 'text' | 'file' | 'voice';
+type ChatMessage = {
+  id: string;
+  sender_id: string;
+  recipient_id: string | null;
+  group_id?: string | null;
+  body: string;
+  message_type?: MessageType;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
+  attachment_mime?: string | null;
+  attachment_size?: number | null;
+  voice_duration_ms?: number | null;
+  attachment_url?: string | null;
+  created_at: string;
+};
+type ChatGroup = {
+  id: string;
+  name: string;
+  avatar_data: string | null;
+  created_by: string;
+  updated_at: string;
+  my_role: 'admin' | 'member';
+  member_count: number;
+};
+type ChatGroupMember = {
+  group_id: string;
+  user_id: string;
+  role: 'admin' | 'member';
+  added_by: string;
+  joined_at: string;
+  username: string;
+  avatar_data: string | null;
+};
+const ATTACHMENT_BUCKET = 'master-chat-attachments';
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+const MESSAGE_FIELDS = 'id, sender_id, recipient_id, group_id, body, message_type, attachment_path, attachment_name, attachment_mime, attachment_size, voice_duration_ms, created_at';
+function isVideoFile(file: File) {
+  return file.type.toLowerCase().startsWith('video/')
+    || /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|ogv)$/i.test(file.name);
+}
+function safeAttachmentName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 180) || 'attachment.txt';
+}
+function mergeScopedMessages(current: ChatMessage[], incoming: ChatMessage[], userId: string, peerId: string | null, groupId: string | null) {
+  const inScope = (message: ChatMessage) => groupId
+    ? message.group_id === groupId
+    : !message.group_id && !!peerId && (
+      (message.sender_id === userId && message.recipient_id === peerId)
+      || (message.sender_id === peerId && message.recipient_id === userId)
+    );
+  const byId = new Map<string, ChatMessage>();
+  for (const message of current) if (inScope(message)) byId.set(message.id, message);
+  for (const message of incoming) if (inScope(message)) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+async function compressImageForGroup(file: File) {
+  if (!file.type.startsWith('image/')) throw new Error('Choose an image file for the group picture.');
+  if (file.size > 8 * 1024 * 1024) throw new Error('Choose an image smaller than 8 MB.');
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const candidate = new Image();
+      candidate.onload = () => resolve(candidate);
+      candidate.onerror = () => reject(new Error('This image could not be opened.'));
+      candidate.src = objectUrl;
+    });
+    for (const maxSide of [192, 144, 96]) {
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Your browser could not prepare this image.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.82, 0.68, 0.54, 0.42]) {
+        const value = canvas.toDataURL('image/jpeg', quality);
+        if (value.length <= 60000) return value;
+      }
+    }
+    throw new Error('That group image is too large even after compression. Try a smaller picture.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 type AuthMode = 'signin' | 'signup';
 type PinRecord = { version: 1; salt: string; verifier: string };
 const PIN_STORAGE_KEY = 'aeroshell.master-chat.local-pin.v1';
@@ -114,7 +198,28 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [people, setPeople] = useState<ChatProfile[]>([]);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [activePerson, setActivePerson] = useState<ChatProfile | null>(null);
+  const [groups, setGroups] = useState<ChatGroup[]>([]);
+  const [activeGroup, setActiveGroup] = useState<ChatGroup | null>(null);
+  const [groupMembers, setGroupMembers] = useState<ChatGroupMember[]>([]);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupDialogMode, setGroupDialogMode] = useState<'create' | 'manage'>('create');
+  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [groupAvatarDraft, setGroupAvatarDraft] = useState<string | null>(null);
+  const [groupMemberSelection, setGroupMemberSelection] = useState<string[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [attachmentBusy, setAttachmentBusy] = useState(false);
+  const [recordingVoice, setRecordingVoice] = useState(false);
+  const [pastedFileOpen, setPastedFileOpen] = useState(false);
+  const [pastedFileName, setPastedFileName] = useState('notes.txt');
+  const [pastedFileContent, setPastedFileContent] = useState('');
+  const [passwordChangeOpen, setPasswordChangeOpen] = useState(false);
+  const [accountCurrentPassword, setAccountCurrentPassword] = useState('');
+  const [accountNewPassword, setAccountNewPassword] = useState('');
+  const [accountConfirmPassword, setAccountConfirmPassword] = useState('');
+  const [accountPasswordBusy, setAccountPasswordBusy] = useState(false);
+  const [accountPasswordError, setAccountPasswordError] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState(false);
@@ -145,6 +250,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const endRef = useRef<HTMLDivElement>(null);
   const lockAppRef = useRef<() => void>(() => undefined);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceStartRef = useRef(0);
+  const voiceLimitTimerRef = useRef<number | null>(null);
 
   const tell = (text: string, kind: 'error' | 'success' | 'info' = 'info') => {
     setNotice(text);
@@ -238,6 +349,51 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       return;
     }
     setPeople((data ?? []) as ChatProfile[]);
+  }, []);
+
+  const loadGroups = useCallback(async (userId: string): Promise<ChatGroup[]> => {
+    if (!supabaseClient) return [];
+    const { data: memberships, error: membershipError } = await supabaseClient
+      .from('aeroshell_group_members').select('group_id, role').eq('user_id', userId);
+    if (membershipError) {
+      tell('Could not load groups. Check that the Master Chat groups migration is installed.', 'error');
+      return [];
+    }
+    const myMemberships = (memberships ?? []) as Array<{ group_id: string; role: 'admin' | 'member' }>;
+    if (!myMemberships.length) {
+      setGroups([]);
+      setActiveGroup(null);
+      return [];
+    }
+    const groupIds = myMemberships.map(item => item.group_id);
+    const [{ data: groupRows, error: groupError }, { data: rosterRows }] = await Promise.all([
+      supabaseClient.from('aeroshell_groups').select('id, name, avatar_data, created_by, updated_at').in('id', groupIds).order('updated_at', { ascending: false }),
+      supabaseClient.from('aeroshell_group_members').select('group_id, user_id, role').in('group_id', groupIds),
+    ]);
+    if (groupError) {
+      tell('Could not load group details. Check group database permissions.', 'error');
+      return [];
+    }
+    const roleById = new Map(myMemberships.map(item => [item.group_id, item.role]));
+    const countById = new Map<string, number>();
+    for (const item of (rosterRows ?? []) as Array<{ group_id: string }>) {
+      countById.set(item.group_id, (countById.get(item.group_id) ?? 0) + 1);
+    }
+    const loaded = ((groupRows ?? []) as Omit<ChatGroup, 'my_role' | 'member_count'>[]).map(group => ({
+      ...group,
+      my_role: roleById.get(group.id) ?? 'member',
+      member_count: countById.get(group.id) ?? 1,
+    }));
+    setGroups(loaded);
+    setActiveGroup(current => current ? loaded.find(group => group.id === current.id) ?? null : null);
+    return loaded;
+  }, []);
+
+  const withSignedAttachment = useCallback(async (message: ChatMessage): Promise<ChatMessage> => {
+    if (!supabaseClient || !message.attachment_path) return message;
+    const { data, error } = await supabaseClient.storage.from(ATTACHMENT_BUCKET).createSignedUrl(message.attachment_path, 60 * 60);
+    if (error || !data?.signedUrl) return { ...message, attachment_url: null };
+    return { ...message, attachment_url: data.signedUrl };
   }, []);
 
   useEffect(() => {
