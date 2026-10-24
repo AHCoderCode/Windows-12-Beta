@@ -32,6 +32,8 @@ type Props = {
   activePerson: ChatProfile | null;
   enabled: boolean;
   showCallLauncher?: boolean;
+  /** Place overlays inside the native fullscreen element when necessary. */
+  portalRoot?: HTMLElement | null;
 };
 
 const MAX_CALL_MS = 50 * 60 * 1000;
@@ -42,7 +44,7 @@ function durationLabel(seconds: number) {
   return mm + ':' + ss;
 }
 
-export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled, showCallLauncher = true }: Props) {
+export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled, showCallLauncher = true, portalRoot }: Props) {
   const [activeCall, setActiveCall] = useState<CallView | null>(null);
   const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
   const [callState, setCallState] = useState<CallState>('idle');
@@ -518,7 +520,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
         title="Choose whom to call" aria-label="Choose whom to call">
         <PhoneCall size={17}/> <span>Call someone</span>
-      </button>, document.body
+      </button>, portalRoot ?? document.body
     )}
     {recipientPickerOpen && showCallLauncher && createPortal(
       <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
@@ -535,10 +537,10 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
           </div>
           <small className="master-chat-recipient-security"><ShieldCheck size={14}/> Calls require the private TURN relay; there is no direct-IP fallback.</small>
         </section>
-      </div>, document.body
+      </div>, portalRoot ?? document.body
     )}
     {notice && createPortal(
-      <div className="master-chat-voice-notice" role="status"><ShieldCheck size={14}/><span>{notice}</span><button aria-label="Dismiss call notice" title="Dismiss" onClick={() => setNotice('')}>×</button></div>, document.body
+      <div className="master-chat-voice-notice" role="status"><ShieldCheck size={14}/><span>{notice}</span><button aria-label="Dismiss call notice" title="Dismiss" onClick={() => setNotice('')}>×</button></div>, portalRoot ?? document.body
     )}
     {activeCall && createPortal(<div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label="Voice call controls">
       <section className="master-chat-call-card">
@@ -558,7 +560,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
           </div>}
         <small className="master-chat-call-footer"><AlertTriangle size={13}/> Use calls only with people you trust. Incoming voice is never auto-answered.</small>
       </section>
-    </div>, document.body)}
+    </div>, portalRoot ?? document.body)}
     {quietIncoming && <span className="master-chat-visually-hidden">Incoming call is muted.</span>}
   </>;
 }
