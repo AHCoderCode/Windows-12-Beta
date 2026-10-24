@@ -1778,3 +1778,37 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .master-chat-close-app{width:40px;height:40px}
   .master-chat-fullscreen-close{left:calc(env(safe-area-inset-left,0px) + 56px)!important}
 }
+
+
+/* Optional local desktop PIN controls in iOS-mode Settings. */
+.ios-lock-pin-field{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.ios-lock-pin-field>span{font-size:12px;font-weight:650}
+.ios-lock-pin-field input{
+  width:100%;
+  min-height:42px;
+  padding:9px 12px;
+  border:1px solid var(--border);
+  border-radius:11px;
+  outline:none;
+  background:var(--solid);
+  color:var(--text);
+  font:inherit;
+  font-size:16px;
+  letter-spacing:6px;
+}
+.ios-lock-pin-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 17%,transparent)}
+.ios-lock-pin-save{width:100%;margin-top:12px}
+.ios-lock-pin-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.ios-lock-pin-status>span{display:flex;align-items:center;gap:8px;flex:1 1 100%;color:var(--text);font-size:12px}
+.ios-lock-pin-status>span svg{color:#30a879}
+.ios-danger-action{
+  min-height:38px;
+  padding:0 13px;
+  border:1px solid #e24d6350;
+  border-radius:11px;
+  background:#e24d6312;
+  color:#e26a7b;
+  font-size:12px;
+  font-weight:650;
+}
+.ios-lock-pin-status-message{margin:10px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
