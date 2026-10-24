@@ -1708,8 +1708,7 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-recipient-security svg{flex:0 0 auto;color:#80d5ad;margin-top:1px}
 .master-chat-voice-notice{position:fixed!important;right:12px!important;bottom:12px!important;z-index:2147483644!important}
 .master-chat-call-overlay{position:fixed!important;inset:0!important;z-index:2147483643!important}
-.master-chat-conversation-fullscreen .master-chat-voice-call-button,
-.master-chat-conversation-fullscreen .master-chat-recipient-picker-overlay{display:none!important}
+
 @media(max-width:620px){
   .master-chat-voice-call-button{min-height:42px!important;padding:0 11px!important;border-radius:14px!important}
   .master-chat-recipient-picker-overlay{padding:12px}
