@@ -624,6 +624,11 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     return people.filter(person => !query || person.username.toLowerCase().includes(query));
   }, [people, peopleQuery]);
 
+  const filteredGroups = useMemo(() => {
+    const query = peopleQuery.trim().toLowerCase();
+    return groups.filter(group => !query || group.name.toLowerCase().includes(query));
+  }, [groups, peopleQuery]);
+
   // Never render cached messages unless both endpoints match the active conversation.
   const conversationMessages = useMemo(
     () => profile && activeGroup
@@ -1606,20 +1611,38 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     </section>;
   }
 
-  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
+  return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={conversationFullscreen ? chatRootRef.current : undefined}/>
     {conversationFullscreen && <><button type="button" className="master-chat-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button><MasterChatExitButton onClose={onClose} className="master-chat-fullscreen-close" portalTarget={chatRootRef.current}/></>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => { setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); }}>
+        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
+          if (recordingVoice) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
+        }}>
           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
         </button>)}
         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
+      </div>
+      <div className="master-chat-list-heading master-chat-groups-heading">
+        <Users size={14}/><span>GROUPS</span><small>{groups.length}</small>
+        <button type="button" className="master-chat-create-group-button" onClick={openCreateGroup} title="Create a group" aria-label="Create a group"><UserPlus size={15}/></button>
+      </div>
+      <div className="master-chat-people master-chat-groups-list">
+        {filteredGroups.map(group => <button type="button" className={'master-chat-person '+(activeGroup?.id === group.id ? 'active' : '')} key={group.id} onClick={() => {
+          if (recordingVoice) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(null); setActiveGroup(group); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
+        }}>
+          <span className="master-chat-avatar">{group.avatar_data ? <img src={group.avatar_data} alt=""/> : group.name.slice(0, 1).toUpperCase()}</span>
+          <span className="master-chat-person-meta"><b>{group.name}</b><small>{group.member_count} members · {group.my_role === 'admin' ? 'Admin' : 'Member'}</small></span>
+          {activeGroup?.id === group.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
+        </button>)}
+        {!filteredGroups.length && <div className="master-chat-empty-people master-chat-empty-groups"><Users size={17}/><span>{peopleQuery ? 'No group matches this search.' : 'Create a group to start chatting together.'}</span></div>}
       </div>
       <div className="master-chat-account">
         <span className="master-chat-avatar own">{isValidAvatarData(profile.avatar_data) ? <img src={profile.avatar_data} alt=""/> : profile.username.slice(0, 1).toUpperCase()}<i className="online"/></span>
@@ -1631,8 +1654,17 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       </div>
     </aside>
     <div className="master-chat-main">
-      {!activePerson ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose someone from the people list to open a private conversation. New members appear as they join.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
-        <header className="master-chat-conversation-header"><button className="master-chat-back" title="Back to people" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button><span className="master-chat-avatar">{isValidAvatarData(activePerson.avatar_data) ? <img src={activePerson.avatar_data} alt=""/> : activePerson.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(activePerson.id) ? 'online' : ''}/></span><span><b>{activePerson.username}</b><small>{onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span><span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>{iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}</header>
+      {!activePerson && !activeGroup ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose a person for a private chat or create a group to start chatting together.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
+        <header className="master-chat-conversation-header">
+          <button className="master-chat-back" title="Back to conversations" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setActiveGroup(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button>
+          {activeGroup
+            ? <span className="master-chat-avatar">{activeGroup.avatar_data ? <img src={activeGroup.avatar_data} alt=""/> : activeGroup.name.slice(0, 1).toUpperCase()}</span>
+            : <span className="master-chat-avatar">{isValidAvatarData(activePerson?.avatar_data) ? <img src={activePerson?.avatar_data ?? ''} alt=""/> : (activePerson?.username ?? '?').slice(0, 1).toUpperCase()}<i className={activePerson && onlineIds.includes(activePerson.id) ? 'online' : ''}/></span>}
+          <span className="master-chat-conversation-title"><b>{activeGroup?.name ?? activePerson?.username}</b><small>{activeGroup ? activeGroup.member_count + ' members · ' + (activeGroup.my_role === 'admin' ? 'You are an admin' : 'Group conversation') : activePerson && onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span>
+          <span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>
+          {activeGroup && <button type="button" className="master-chat-group-info-button" title="Group info and members" aria-label="Group info and members" onClick={openGroupManagement}><Users size={17}/><span>Group info</span></button>}
+          {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
+        </header>
         {notice && <p className={'master-chat-inline-notice '+noticeKind} role="status">{notice}</p>}
         <div className="master-chat-privacy-context"><ShieldCheck size={14}/><span>Access is restricted by database policies, but text messages are <b>not end-to-end encrypted</b>. Do not share passwords or sensitive personal information.</span></div>
         <div className="master-chat-messages">
