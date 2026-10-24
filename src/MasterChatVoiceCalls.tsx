@@ -132,7 +132,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       const allUrls = Array.isArray(server.urls) ? server.urls : [server.urls];
       const urls = allUrls.filter((url): url is string =>
         typeof url === 'string'
-        && /^turns?:[a-z0-9.-]+\\.relay\\.metered\\.ca:\\d+(?:\\?transport=(?:tcp|udp))?$/i.test(url.trim()),
+        && /^turns?:[a-z0-9.-]+\.relay\.metered\.ca:\d+(?:\?transport=(?:tcp|udp))?$/i.test(url.trim()),
       );
       if (!urls.length || typeof server.username !== 'string' || !server.username.trim()
         || typeof server.credential !== 'string' || !server.credential.trim()) return [];
