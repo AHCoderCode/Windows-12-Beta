@@ -4,7 +4,7 @@ import { createClient, type RealtimeChannel, type Session } from '@supabase/supa
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Download, EyeOff, FileText, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
-import { getConversationMessages, isConversationMessage, mergeConversationMessages } from './master-chat-utils';
+import { getConversationMessages, getGroupMessages, mergeConversationMessages, mergeGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
 type MessageType = 'text' | 'file' | 'voice';
@@ -436,6 +436,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (current) {
         await loadProfile(current.user.id);
         await loadPeople(current.user.id);
+        await loadGroups(current.user.id);
       }
       if (active) setBooting(false);
     });
@@ -444,7 +445,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (!next) {
         setProfile(null);
         setPeople([]);
+        setGroups([]);
         setActivePerson(null);
+        setActiveGroup(null);
+        setGroupMembers([]);
         setMessages([]);
         setOnlineIds([]);
         setLive(false);
@@ -453,6 +457,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         window.setTimeout(() => {
           void loadProfile(next.user.id);
           void loadPeople(next.user.id);
+          void loadGroups(next.user.id);
           setBooting(false);
         }, 0);
       }
@@ -461,7 +466,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadPeople, loadProfile, pinUnlocked]);
+  }, [loadGroups, loadPeople, loadProfile, pinUnlocked]);
 
   useEffect(() => {
     if (!pinUnlocked || !supabaseClient || !session || !profile) return;
@@ -477,6 +482,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setPeople(current => current.map(person => person.id === changed.id ? { ...person, ...changed } : person));
       if (changed.id === profile.id) setProfile(current => current ? { ...current, ...changed } : current);
       setActivePerson(current => current?.id === changed.id ? { ...current, ...changed } : current);
+    }).on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_groups' }, () => {
+      void loadGroups(profile.id);
+    }).on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_group_members' }, () => {
+      void loadGroups(profile.id);
     }).subscribe(status => {
       setLive(status === 'SUBSCRIBED');
       if (status === 'SUBSCRIBED') {
@@ -488,39 +497,60 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setOnlineIds([]);
       setLive(false);
     };
-  }, [session, profile, pinUnlocked]);
+  }, [session, profile, pinUnlocked, loadGroups]);
 
   useEffect(() => {
-    if (!pinUnlocked || !supabaseClient || !session || !profile || !activePerson) {
+    if (!pinUnlocked || !supabaseClient || !session || !profile || (!activePerson && !activeGroup)) {
       setMessages([]);
       return;
     }
     let mounted = true;
-    // Keep the state scoped to this pair while loading; the render also filters defensively.
-    setMessages(current => getConversationMessages(current, profile.id, activePerson.id));
+    const groupId = activeGroup?.id ?? null;
+    const peerId = activePerson?.id ?? null;
+    setMessages(current => current.filter(message => groupId
+      ? message.group_id === groupId
+      : !message.group_id && !!peerId && (
+        (message.sender_id === profile.id && message.recipient_id === peerId)
+        || (message.sender_id === peerId && message.recipient_id === profile.id)
+      )));
     const loadConversation = async () => {
-      const filter = 'and(sender_id.eq.' + profile.id + ',recipient_id.eq.' + activePerson.id + '),and(sender_id.eq.' + activePerson.id + ',recipient_id.eq.' + profile.id + ')';
-      const { data, error } = await supabaseClient.from('aeroshell_messages')
-        .select('id, sender_id, recipient_id, body, created_at').or(filter)
-        .order('created_at', { ascending: true }).limit(500);
+      let query = supabaseClient.from('aeroshell_messages').select(MESSAGE_FIELDS).order('created_at', { ascending: true }).limit(500);
+      if (groupId) {
+        query = query.eq('group_id', groupId);
+      } else if (peerId) {
+        const filter = 'and(sender_id.eq.' + profile.id + ',recipient_id.eq.' + peerId + '),and(sender_id.eq.' + peerId + ',recipient_id.eq.' + profile.id + ')';
+        query = query.or(filter).is('group_id', null);
+      }
+      const { data, error } = await query;
       if (!mounted) return;
       if (error) {
-        tell('Could not load this conversation. Confirm the message-table policies are installed.', 'error');
+        tell('Could not load this conversation. Confirm the message-table policies and group migration are installed.', 'error');
         return;
       }
-      setMessages(current => mergeConversationMessages(current, (data ?? []) as ChatMessage[], profile.id, activePerson.id));
+      const enriched = await Promise.all(((data ?? []) as ChatMessage[]).map(withSignedAttachment));
+      if (!mounted) return;
+      setMessages(current => mergeScopedMessages(current, enriched, profile.id, peerId, groupId));
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 30);
     };
     void loadConversation();
-    const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-' + activePerson.id, { config: { private: true } })
+    const topic = groupId
+      ? 'aeroshell-conversation-' + profile.id + '-group-' + groupId
+      : 'aeroshell-conversation-' + profile.id + '-' + peerId;
+    const channel = supabaseClient.channel(topic, { config: { private: true } })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const incoming = payload.new as ChatMessage;
-        if (!mounted || !isConversationMessage(incoming, profile.id, activePerson.id)) return;
-        setMessages(current => {
-          if (current.some(message => message.id === incoming.id)) return current;
-          return [...current, incoming].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        const inScope = groupId
+          ? incoming.group_id === groupId
+          : !incoming.group_id && !!peerId && (
+            (incoming.sender_id === profile.id && incoming.recipient_id === peerId)
+            || (incoming.sender_id === peerId && incoming.recipient_id === profile.id)
+          );
+        if (!mounted || !inScope) return;
+        void withSignedAttachment(incoming).then(enriched => {
+          if (!mounted) return;
+          setMessages(current => mergeScopedMessages(current, [enriched], profile.id, peerId, groupId));
+          window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
         });
-        window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 25);
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'aeroshell_messages' }, payload => {
         const deleted = payload.old as { id?: string };
@@ -533,9 +563,57 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       }).subscribe();
     return () => {
       mounted = false;
-      void supabaseClient?.removeChannel(channel);
+      void supabaseClient.removeChannel(channel);
     };
-  }, [session, profile, activePerson, pinUnlocked]);
+  }, [session, profile, activePerson, activeGroup, pinUnlocked, withSignedAttachment]);
+
+  useEffect(() => {
+    if (!pinUnlocked || !supabaseClient || !session || !profile || !activeGroup) {
+      setGroupMembers([]);
+      return;
+    }
+    let active = true;
+    const loadRoster = async () => {
+      const { data, error } = await supabaseClient.from('aeroshell_group_members')
+        .select('group_id, user_id, role, added_by, joined_at')
+        .eq('group_id', activeGroup.id).order('joined_at', { ascending: true });
+      if (!active) return;
+      if (error) {
+        tell('Could not load this group’s member list.', 'error');
+        return;
+      }
+      const roster = (data ?? []) as Array<Omit<ChatGroupMember, 'username' | 'avatar_data'>>;
+      const ids = roster.map(item => item.user_id);
+      const { data: profiles, error: profileError } = ids.length
+        ? await supabaseClient.from('aeroshell_profiles').select('id, username, avatar_data').in('id', ids)
+        : { data: [], error: null };
+      if (!active) return;
+      if (profileError) {
+        tell('Could not load group member profiles.', 'error');
+        return;
+      }
+      const profilesById = new Map(((profiles ?? []) as ChatProfile[]).map(item => [item.id, item]));
+      setGroupMembers(roster.flatMap(item => {
+        const member = profilesById.get(item.user_id);
+        return member ? [{ ...item, username: member.username, avatar_data: member.avatar_data ?? null }] : [];
+      }));
+    };
+    void loadRoster();
+    const channel = supabaseClient.channel('aeroshell-master-chat-groups', { config: { private: true } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_group_members' }, () => {
+        void loadRoster();
+        void loadGroups(profile.id);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'aeroshell_groups', filter: 'id=eq.' + activeGroup.id }, () => {
+        void loadGroups(profile.id);
+      }).subscribe();
+    return () => {
+      active = false;
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [session, profile, activeGroup?.id, pinUnlocked, loadGroups]);
+
+
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -548,8 +626,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   // Never render cached messages unless both endpoints match the active conversation.
   const conversationMessages = useMemo(
-    () => profile && activePerson ? getConversationMessages(messages, profile.id, activePerson.id) : [],
-    [messages, profile, activePerson],
+    () => profile && activeGroup
+      ? getGroupMessages(messages, activeGroup.id)
+      : profile && activePerson
+        ? getConversationMessages(messages, profile.id, activePerson.id)
+        : [],
+    [messages, profile, activePerson, activeGroup],
   );
 
   const submitAuth = async (event: FormEvent) => {
