@@ -954,8 +954,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           .eq('id', activeGroup.id)
           .select('id, name, avatar_data, created_by, updated_at').single();
         if (error || !data) throw new Error('Group details were not saved. Only admins can edit the name and picture.');
-        await loadGroups(profile.id);
-        setActiveGroup(current => current?.id === data.id ? { ...current, ...data } : current);
+        const loadedGroups = await loadGroups(profile.id);
+        setActiveGroup(loadedGroups.find(group => group.id === data.id) ?? null);
         setGroupDialogOpen(false);
         tell('Group details updated.', 'success');
       }
