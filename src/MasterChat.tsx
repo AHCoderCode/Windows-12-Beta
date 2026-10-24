@@ -211,6 +211,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [attachmentBusy, setAttachmentBusy] = useState(false);
   const [recordingVoice, setRecordingVoice] = useState(false);
+  const [voicePreparing, setVoicePreparing] = useState(false);
   const [pastedFileOpen, setPastedFileOpen] = useState(false);
   const [pastedFileName, setPastedFileName] = useState('notes.txt');
   const [pastedFileContent, setPastedFileContent] = useState('');
@@ -252,6 +253,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voicePreparingRef = useRef(false);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
   const voiceStartRef = useRef(0);
@@ -822,14 +824,21 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       voiceRecorderRef.current?.stop();
       return;
     }
+    if (voicePreparingRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       tell('Voice messages are not supported by this browser. Try a current version of Chrome, Edge, or Safari over HTTPS.', 'error');
       return;
     }
     if (!supabaseClient || !profile || (!activePerson && !activeGroup) || attachmentBusy) return;
     const target = { person: activePerson, group: activeGroup };
+    voicePreparingRef.current = true;
+    setVoicePreparing(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!voicePreparingRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       voiceStreamRef.current = stream;
       voiceChunksRef.current = [];
       voiceStartRef.current = Date.now();
@@ -851,6 +860,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         stream.getTracks().forEach(track => track.stop());
         voiceStreamRef.current = null;
         voiceRecorderRef.current = null;
+        voicePreparingRef.current = false;
+        setVoicePreparing(false);
         setRecordingVoice(false);
         const elapsed = Math.min(120000, Math.max(1, Date.now() - voiceStartRef.current));
         const type = recorder.mimeType || voiceChunksRef.current[0]?.type || 'audio/webm';
@@ -865,6 +876,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         }
       };
       recorder.start(200);
+      voicePreparingRef.current = false;
+      setVoicePreparing(false);
       setRecordingVoice(true);
       tell('Recording voice message… Tap the microphone again to stop. Maximum duration: 2 minutes.', 'info');
       voiceLimitTimerRef.current = window.setTimeout(() => {
@@ -874,6 +887,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         }
       }, 120000);
     } catch (error) {
+      voicePreparingRef.current = false;
+      setVoicePreparing(false);
       voiceStreamRef.current?.getTracks().forEach(track => track.stop());
       voiceStreamRef.current = null;
       setRecordingVoice(false);
@@ -884,6 +899,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   };
 
   const cancelVoiceRecording = () => {
+    voicePreparingRef.current = false;
+    setVoicePreparing(false);
     if (voiceLimitTimerRef.current !== null) window.clearTimeout(voiceLimitTimerRef.current);
     voiceLimitTimerRef.current = null;
     const recorder = voiceRecorderRef.current;
@@ -1505,7 +1522,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   }, [iosMode, activePerson, activeGroup, pinUnlocked]);
 
   const lockApp = () => {
-    if (voiceRecorderRef.current) cancelVoiceRecording();
+    if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
     if (!pinRecord) {
       tell('A PIN is optional. Set one in Privacy & app PIN if you want to lock Master Chat.', 'info');
       return;
@@ -1665,7 +1682,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
       <div className="master-chat-people">
         {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
-          if (voiceRecorderRef.current) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
           setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
         }}>
           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
@@ -1680,7 +1697,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       </div>
       <div className="master-chat-people master-chat-groups-list">
         {filteredGroups.map(group => <button type="button" className={'master-chat-person '+(activeGroup?.id === group.id ? 'active' : '')} key={group.id} onClick={() => {
-          if (voiceRecorderRef.current) { tell('Stop your voice recording before switching chats.', 'info'); return; }
+          if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
           setConversationFullscreen(false); setMessages([]); setDraft(''); setActivePerson(null); setActiveGroup(group); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
         }}>
           <span className="master-chat-avatar">{group.avatar_data ? <img src={group.avatar_data} alt=""/> : group.name.slice(0, 1).toUpperCase()}</span>
@@ -1760,9 +1777,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <div className="master-chat-composer-box">
             <textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={activeGroup ? 'Message ' + activeGroup.name + '…' : 'Message ' + (activePerson?.username ?? '') + '…'} aria-label="Write a message" disabled={attachmentBusy}/>
             <div className="master-chat-composer-tools">
-              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
-              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
-              <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : 'Record a voice message'}><Mic size={16}/><span>{recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
+              <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
+              <button type="button" className={'master-chat-composer-tool'+(recordingVoice ? ' recording' : '')} disabled={attachmentBusy || voicePreparing} onClick={() => void toggleVoiceRecording()} title={recordingVoice ? 'Stop and send voice message' : voicePreparing ? 'Requesting microphone access' : 'Record a voice message'}><Mic size={16}/><span>{voicePreparing ? 'Starting…' : recordingVoice ? 'Stop & send' : 'Voice'}</span></button>
+              {voicePreparing && <span className="master-chat-recording-indicator"><i/> Waiting for microphone…</span>}
               {recordingVoice && <span className="master-chat-recording-indicator"><i/> Recording · 2 min max</span>}
               {attachmentBusy && <span className="master-chat-attachment-progress"><span className="master-chat-spinner small"/> Sending…</span>}
             </div>
