@@ -839,14 +839,17 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     const syncReadReceipts = async (items: ChatMessage[]) => {
       const ids = Array.from(new Set(items.map(item => item.id).filter(Boolean)));
       if (!ids.length || !mounted) return;
-      const { data: existingData, error: existingError } = await supabaseClient.from('aeroshell_message_reads')
-        .select('message_id, user_id, read_at').in('message_id', ids);
-      if (!mounted) return;
-      if (existingError) {
-        console.warn('Master Chat read receipts could not be loaded:', existingError.message);
-        return;
+      const existing: ChatMessageReadReceipt[] = [];
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const { data: chunkData, error: chunkError } = await supabaseClient.from('aeroshell_message_reads')
+          .select('message_id, user_id, read_at').in('message_id', ids.slice(offset, offset + 100));
+        if (!mounted) return;
+        if (chunkError) {
+          console.warn('Master Chat read receipts could not be loaded:', chunkError.message);
+          return;
+        }
+        existing.push(...((chunkData ?? []) as ChatMessageReadReceipt[]));
       }
-      const existing = (existingData ?? []) as ChatMessageReadReceipt[];
       setReadReceipts(current => mergeReadReceiptRows(current, existing));
       const alreadyReadByMe = new Set(existing.filter(row => row.user_id === profile.id).map(row => row.message_id));
       const toMark = items.filter(message =>
