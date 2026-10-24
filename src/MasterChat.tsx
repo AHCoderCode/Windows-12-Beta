@@ -2218,6 +2218,24 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     }
   };
 
+const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
+      <div className="master-chat-passkey-preflight-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPasskeyPromptIntent(null);}}>
+        <section className="master-chat-passkey-preflight" role="dialog" aria-modal="true" aria-labelledby="master-chat-passkey-preflight-title">
+          <button type="button" className="master-chat-account-modal-close" aria-label="Cancel passkey setup" title="Cancel" onClick={()=>setPasskeyPromptIntent(null)}><X size={18}/></button>
+          <span className="master-chat-pin-icon"><Fingerprint size={23}/></span>
+          <p className="eyebrow">DEVICE AUTHENTICATION</p>
+          <h3 id="master-chat-passkey-preflight-title">{passkeyPromptIntent.action==='create'?'Before creating a passkey':'Before using this passkey'}</h3>
+          <p>Master Chat requests the phone's built-in passkey authenticator. It cannot force Face ID or fingerprint exclusively. Android or your password manager may ask for the phone's pattern/PIN, including as a fallback even when a biometric is enrolled.</p>
+          <p className="master-chat-passkey-preflight-note">If you do not want any pattern/PIN prompt, choose Cancel now. A website cannot guarantee biometric-only authentication; that requires a native app configured to allow biometrics without device-credential fallback.</p>
+          <div className="master-chat-feature-modal-actions">
+            <button type="button" className="secondary-button" onClick={()=>setPasskeyPromptIntent(null)}>Cancel — don't open prompt</button>
+            <button type="button" className="master-chat-primary" disabled={passkeyBusy} onClick={()=>{const intent=passkeyPromptIntent;setPasskeyPromptIntent(null);if(intent.action==='create' && (intent.method==='face'||intent.method==='fingerprint'))void saveLocalPasskey(intent.method);else void unlockWithLocalPasskey();}}>Continue to device prompt</button>
+          </div>
+        </section>
+      </div>,
+      document.body
+    ) : null;
+
   if (pinMode === 'loading') {
     return <section className="master-chat-pin-screen" aria-live="polite">
       <MasterChatExitButton onClose={onClose}/>
@@ -2254,6 +2272,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
         <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
       </form>
+      {passkeyPreflightModal}
     </section>;
   }
 
@@ -2612,23 +2631,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         <div className="master-chat-pin-modal-actions"><button className="master-chat-primary" type="submit" disabled={pinChangeBusy}>{pinChangeBusy?'Saving…':pinRecord?'Change PIN':'Set PIN'}</button>{pinRecord && <button type="button" className="danger-button" disabled={pinChangeBusy} onClick={() => void removeLocalPin()}>{pinChangeBusy?'Working…':'Remove PIN'}</button>}<button type="button" className="secondary-button" onClick={()=>setPinChangeOpen(false)}>Cancel</button></div>
         </form>
     </div>}
-    {passkeyPromptIntent && createPortal(
-      <div className="master-chat-passkey-preflight-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPasskeyPromptIntent(null);}}>
-        <section className="master-chat-passkey-preflight" role="dialog" aria-modal="true" aria-labelledby="master-chat-passkey-preflight-title">
-          <button type="button" className="master-chat-account-modal-close" aria-label="Cancel passkey setup" title="Cancel" onClick={()=>setPasskeyPromptIntent(null)}><X size={18}/></button>
-          <span className="master-chat-pin-icon"><Fingerprint size={23}/></span>
-          <p className="eyebrow">DEVICE AUTHENTICATION</p>
-          <h3 id="master-chat-passkey-preflight-title">{passkeyPromptIntent.action==='create'?'Before creating a passkey':'Before using this passkey'}</h3>
-          <p>Master Chat requests the phone's built-in passkey authenticator. It cannot force Face ID or fingerprint exclusively. Android or your password manager may ask for the phone's pattern/PIN, including as a fallback even when a biometric is enrolled.</p>
-          <p className="master-chat-passkey-preflight-note">If you do not want any pattern/PIN prompt, choose Cancel now. A website cannot guarantee biometric-only authentication; that requires a native app configured to allow biometrics without device-credential fallback.</p>
-          <div className="master-chat-feature-modal-actions">
-            <button type="button" className="secondary-button" onClick={()=>setPasskeyPromptIntent(null)}>Cancel — don't open prompt</button>
-            <button type="button" className="master-chat-primary" disabled={passkeyBusy} onClick={()=>{const intent=passkeyPromptIntent;setPasskeyPromptIntent(null);if(intent.action==='create' && (intent.method==='face'||intent.method==='fingerprint'))void saveLocalPasskey(intent.method);else void unlockWithLocalPasskey();}}>Continue to device prompt</button>
-          </div>
-        </section>
-      </div>,
-      document.body
-    )}
+    {passkeyPreflightModal}
     {pendingImage && createPortal(
       <div className="master-chat-image-compose-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)cancelPendingImage();}}>
         <section className="master-chat-image-compose" role="dialog" aria-modal="true" aria-labelledby="master-chat-image-compose-title">
