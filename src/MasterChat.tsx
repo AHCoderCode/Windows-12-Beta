@@ -2172,8 +2172,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const lockApp = () => {
     if (voiceRecorderRef.current || voicePreparingRef.current) cancelVoiceRecording();
-    if (!pinRecord && !(localPasskey && localPasskey.rpId === window.location.hostname)) {
-      tell('Set up an optional PIN or passkey in Account & privacy before locking Master Chat.', 'info');
+    // Even when a device passkey is saved, require a site-specific recovery PIN.
+    // WebAuthn may invoke the phone's own pattern/PIN and cannot guarantee biometrics only.
+    if (!pinRecord) {
+      tell('Create your custom four-digit Master Chat app PIN before locking. A device passkey may still request the phone’s screen-lock pattern/PIN.', 'info');
       return;
     }
     setConversationFullscreen(false);
@@ -2492,8 +2494,8 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
           </div>}
           {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
           <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord ? 'Lock now; use your PIN or configured passkey to return.' : localPasskey && localPasskey.rpId===window.location.hostname ? 'Lock now; use your device passkey to return.' : 'Set up an optional PIN or passkey to enable the app lock.'}</small></span></div>
-            <button type="button" className="master-chat-account-action" disabled={!pinRecord && !(localPasskey && localPasskey.rpId===window.location.hostname)} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
+            <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>Lock this browser</b><small>{pinRecord ? 'Lock now; use your custom app PIN or configured device passkey to return.' : 'Set a custom four-digit Master Chat PIN first. A device passkey can still request your phone’s screen-lock pattern/PIN.'}</small></span></div>
+            <button type="button" className="master-chat-account-action" disabled={!pinRecord} onClick={()=>{setAccountSettingsOpen(false);lockApp();}}>Lock now <ChevronRight size={15}/></button>
           </div>
           <div className="master-chat-account-setting-row">
             <div className="master-chat-account-setting-copy"><LockKeyhole size={18}/><span><b>System password</b><small>Change your Master Chat sign-in password. This does not change your Windows or phone password.</small></span></div>
