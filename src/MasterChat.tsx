@@ -315,7 +315,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (!changed?.id || typeof changed.username !== 'string') return;
       setPeople(current => current.map(person => person.id === changed.id ? { ...person, ...changed } : person));
       if (changed.id === profile.id) setProfile(current => current ? { ...current, ...changed } : current);
-      if (activePerson?.id === changed.id) setActivePerson(current => current ? { ...current, ...changed } : current);
+      setActivePerson(current => current?.id === changed.id ? { ...current, ...changed } : current);
     }).subscribe(status => {
       setLive(status === 'SUBSCRIBED');
       if (status === 'SUBSCRIBED') {
