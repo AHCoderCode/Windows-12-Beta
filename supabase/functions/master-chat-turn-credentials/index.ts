@@ -51,7 +51,10 @@ Deno.serve(async (request: Request) => {
     global: { headers: { Authorization: authorization } },
   });
 
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  // Validate the bearer token explicitly. Do not rely on a persisted SDK session
+  // inside the Edge Function, where persistSession is intentionally disabled.
+  const bearerToken = authorization.slice("Bearer ".length).trim();
+  const { data: userData, error: userError } = await supabase.auth.getUser(bearerToken);
   if (userError || !userData.user) return json({ error: "invalid_session" }, 401, origin);
 
   let body: { callId?: unknown };
@@ -65,7 +68,7 @@ Deno.serve(async (request: Request) => {
     return json({ error: "invalid_call_id" }, 400, origin);
   }
 
-  // The user-scoped client and database RLS enforce participant membership. No service-role key is used.
+  // The user-scoped client and database RLS enforce participant membership.
   const { data: call, error: callError } = await supabase.from("aeroshell_calls")
     .select("id, caller_id, callee_id, status, created_at, updated_at")
     .eq("id", callId)
@@ -81,7 +84,17 @@ Deno.serve(async (request: Request) => {
     return json({ error: "call_expired" }, 409, origin);
   }
 
-  // A server-enforced per-user quota limits repeated TURN credential minting.
+  // Keep provider configuration errors from consuming a user's relay request quota.
+  const meteredDomain = Deno.env.get("METERED_TURN_DOMAIN")?.trim().toLowerCase() ?? "";
+  const meteredApiKey = Deno.env.get("METERED_TURN_API_KEY")?.trim() ?? "";
+  if (!meteredDomain || !meteredApiKey) {
+    return json({ error: "private_relay_not_configured" }, 503, origin);
+  }
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.metered\.live$/i.test(meteredDomain)) {
+    return json({ error: "backend_configuration_unavailable" }, 503, origin);
+  }
+
+  // A server-enforced per-user quota limits repeated TURN credential requests.
   const { error: quotaError } = await supabase.from("aeroshell_turn_credential_requests")
     .insert({ user_id: userData.user.id, call_id: callId });
   if (quotaError) {
@@ -89,37 +102,37 @@ Deno.serve(async (request: Request) => {
     return json({ error: rateLimited ? "rate_limited" : "relay_authorization_failed" }, rateLimited ? 429 : 503, origin);
   }
 
-  const turnKeyId = Deno.env.get("CLOUDFLARE_TURN_KEY_ID");
-  const turnApiToken = Deno.env.get("CLOUDFLARE_TURN_API_TOKEN");
-  if (!turnKeyId || !turnApiToken) return json({ error: "private_relay_not_configured" }, 503, origin);
-
   try {
-    // Cloudflare's long-lived TURN key and API token stay server-side. Only short-lived
-    // credentials (one-hour TTL) are returned to an authenticated participant in an active call.
-    const upstream = await fetch(
-      "https://rtc.live.cloudflare.com/v1/turn/keys/" + encodeURIComponent(turnKeyId) + "/credentials/generate-ice-servers",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + turnApiToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ttl: 3600 }),
-        signal: AbortSignal.timeout(8000),
-      },
-    );
+    const endpoint = new URL("https://" + meteredDomain + "/api/v1/turn/credentials");
+    endpoint.searchParams.set("apiKey", meteredApiKey);
+    endpoint.searchParams.set("region", "asia");
+    const upstream = await fetch(endpoint, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
     if (!upstream.ok) {
-      // Never echo upstream body or credentials to the browser.
+      // Never forward provider response bodies, which may contain diagnostic data.
       return json({ error: "private_relay_unavailable" }, 502, origin);
     }
-    const payload = await upstream.json() as { iceServers?: Array<{ urls?: string | string[]; username?: string; credential?: string }> };
-    const iceServers = (payload.iceServers ?? []).filter(server => {
-      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-      return typeof server.username === "string" && typeof server.credential === "string"
-        && urls.some(url => typeof url === "string" && /^turns?:turn\.cloudflare\.com:/i.test(url));
+
+    const payload = await upstream.json() as Array<{
+      urls?: string | string[];
+      username?: string;
+      credential?: string;
+    }>;
+    const iceServers = (Array.isArray(payload) ? payload : []).flatMap(server => {
+      const candidates = Array.isArray(server?.urls) ? server.urls : [server?.urls];
+      const urls = candidates.filter((url): url is string =>
+        typeof url === "string"
+        && /^turns?:[a-z0-9.-]+\.relay\.metered\.ca:\d+(?:\?transport=(?:tcp|udp))?$/i.test(url.trim()),
+      );
+      if (!urls.length || typeof server?.username !== "string" || !server.username.trim()
+        || typeof server?.credential !== "string" || !server.credential.trim()) return [];
+      return [{ urls: urls.length === 1 ? urls[0] : urls, username: server.username, credential: server.credential }];
     });
     if (!iceServers.length) return json({ error: "private_relay_unavailable" }, 502, origin);
-    return json({ iceServers, expiresInSeconds: 3600 }, 200, origin);
+    return json({ iceServers }, 200, origin);
   } catch {
     return json({ error: "private_relay_unavailable" }, 502, origin);
   }
