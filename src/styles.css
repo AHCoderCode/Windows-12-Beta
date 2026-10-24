@@ -2326,7 +2326,6 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   width:auto;
   height:auto;
   object-fit:contain;
-  decoding:async;
 }
 .master-chat-image-attachment:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .master-chat-image-caption{
