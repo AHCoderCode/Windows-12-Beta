@@ -1572,7 +1572,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPasskeyError('');
     try {
       if (!window.isSecureContext || !navigator.credentials || typeof navigator.credentials.create !== 'function') {
-        throw new Error('Passkeys need a browser with WebAuthn support on HTTPS (or localhost).');
+        throw new Error('Biometric passkeys need a current browser on HTTPS (or localhost) with WebAuthn support.');
       }
       if (!globalThis.crypto?.subtle) throw new Error('Secure browser cryptography is unavailable.');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -1585,10 +1585,12 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
           timeout: 60000,
           attestation: 'none',
-          authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+          // Use the device's built-in authenticator for Face ID, Touch ID, fingerprint,
+          // Windows Hello, or the platform's configured secure fallback.
+          authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
         },
       }) as PublicKeyCredential | null;
-      if (!created || created.type !== 'public-key') throw new Error('Your device did not create a passkey. Try again or use your app PIN.');
+      if (!created || created.type !== 'public-key') throw new Error('Your device did not create a built-in biometric passkey. Check that Face ID, fingerprint, or Windows Hello is configured, or use your app PIN.');
       const response = created.response as AuthenticatorAttestationResponse & {
         getPublicKey?: () => ArrayBuffer | null;
         getPublicKeyAlgorithm?: () => number;
@@ -1600,7 +1602,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       const publicKey = typeof response.getPublicKey === 'function' ? response.getPublicKey() : null;
       const algorithm = typeof response.getPublicKeyAlgorithm === 'function' ? response.getPublicKeyAlgorithm() : 0;
       if (!publicKey || algorithm !== -7) {
-        throw new Error('This authenticator does not expose the supported P-256 public key needed for local verification. Try a compatible device passkey.');
+        throw new Error('This device browser cannot expose the verification key needed by this local passkey feature. Try a current Safari, Chrome, or Edge browser with its built-in biometric authenticator, or use your account password/app PIN.');
       }
       const record: LocalPasskeyRecord = {
         version: 1,
@@ -1614,7 +1616,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       };
       localStorage.setItem(LOCAL_PASSKEY_STORAGE_KEY, JSON.stringify(record));
       setLocalPasskey(record);
-      tell('Passkey is set up for local Master Chat unlocking on this browser.', 'success');
+      setPasskeyError('');
+      tell('Biometric passkey is ready. Your device will request Face ID, fingerprint, Windows Hello, or its supported secure screen-lock verification when you unlock.', 'success');
     } catch (error) {
       setPasskeyError(error instanceof Error ? error.message : 'Could not set up a passkey on this device.');
     } finally {
@@ -1624,7 +1627,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const removeLocalPasskey = () => {
     if (!localPasskey || passkeyBusy) return;
-    if (!window.confirm('Remove this passkey from Master Chat on this browser? This does not delete the passkey from your device password manager.')) return;
+    if (!window.confirm('Remove this biometric passkey link from Master Chat on this browser? This does not delete the passkey from your device password manager.')) return;
     try {
       localStorage.removeItem(LOCAL_PASSKEY_STORAGE_KEY);
       setLocalPasskey(null);
@@ -1642,7 +1645,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPinError('');
     try {
       if (!window.isSecureContext || !navigator.credentials || typeof navigator.credentials.get !== 'function') {
-        throw new Error('Passkey unlock needs a browser with WebAuthn support on HTTPS (or localhost).');
+        throw new Error('Biometric unlock needs a current browser on HTTPS (or localhost) with WebAuthn support.');
       }
       if (!globalThis.crypto?.subtle) throw new Error('Secure browser cryptography is unavailable.');
       if (saved.rpId !== window.location.hostname) throw new Error('This passkey was registered for a different website address.');
@@ -1656,7 +1659,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           userVerification: 'required',
         },
       }) as PublicKeyCredential | null;
-      if (!credential || credential.type !== 'public-key') throw new Error('No passkey response was returned.');
+      if (!credential || credential.type !== 'public-key') throw new Error('No biometric passkey response was returned. Check your device screen-lock settings and try again.');
       if (passkeyToBase64Url(credential.rawId) !== saved.credentialId) throw new Error('The selected passkey does not match this browser’s registered credential.');
       const response = credential.response as AuthenticatorAssertionResponse;
       const clientDataBytes = new Uint8Array(response.clientDataJSON);
@@ -2003,7 +2006,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         </>}
         {pinError && <p className="master-chat-notice error" role="alert">{pinError}</p>}
         {!isRepair && !passkeyOnlyLock && <button className="master-chat-primary" disabled={pinBusy || (cooldownSeconds > 0 && !isSetup)} type="submit">{pinBusy ? 'Checking…' : isSetup ? 'Save PIN and continue' : 'Unlock messages'}</button>}
-        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithLocalPasskey()}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying passkey…' : 'Unlock with passkey'}</button>}
+        {!isSetup && !isRepair && localPasskey && localPasskey.rpId === window.location.hostname && <button type="button" className="master-chat-pin-passkey-button" disabled={passkeyBusy} onClick={() => void unlockWithLocalPasskey()}><Fingerprint size={16}/>{passkeyBusy ? 'Verifying…' : 'Use Face ID / fingerprint'}</button>}
         {isRepair && <button type="button" className="master-chat-primary" onClick={resetLocalPin}>Reset this browser’s app PIN</button>}
         <div className="master-chat-pin-disclaimer"><ShieldCheck size={15}/><span>Privacy note: this is a browser-level lock, not end-to-end encryption. Someone with full access to this browser profile or developer tools may bypass it. Clearing site data can reset the local lock.</span></div>
       </form>
@@ -2190,7 +2193,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             <button type="button" className="master-chat-account-action" onClick={openPinSettings}>{pinRecord?'Manage':'Set PIN'} <ChevronRight size={15}/></button>
           </div>
           <div className="master-chat-account-setting-row">
-            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Passkey</b><small>{localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? 'Ready on this browser. Use your device screen lock or biometrics.' : 'Use your device passkey to unlock Master Chat on this browser.'}</small></span></div>
+            <div className="master-chat-account-setting-copy"><Fingerprint size={18}/><span><b>Face ID / fingerprint</b><small>{localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname ? 'Biometric passkey ready on this browser.' : 'Set up your device’s built-in biometric passkey.'}</small></span></div>
             <button type="button" className="master-chat-account-action" disabled={passkeyBusy} onClick={()=>{setPasskeyError('');if(localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname)removeLocalPasskey();else void saveLocalPasskey();}}>{passkeyBusy?'Working…':localPasskey?.userId===profile.id && localPasskey.rpId===window.location.hostname?'Remove':'Set up'} <ChevronRight size={15}/></button>
           </div>
           {passkeyError && <p className="master-chat-notice error" role="alert">{passkeyError}</p>}
@@ -2207,7 +2210,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
           <button type="button" className="master-chat-account-signout" onClick={()=>{setAccountSettingsOpen(false);void signOut();}}><LogOut size={16}/> Sign out</button>
           <button type="button" className="master-chat-account-delete" onClick={openDeleteAccount}><Trash2 size={16}/> Delete account permanently <ChevronRight size={16}/></button>
         </div>
-        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN and passkey are local unlock methods for this browser; neither replaces your Master Chat account password or encrypts chat messages. Removing the passkey link here does not delete the credential from your device’s passkey manager.</p>
+        <p className="master-chat-account-modal-note"><ShieldCheck size={14}/> The app PIN and biometric passkey are local unlock methods for this browser; neither replaces your Master Chat account password or encrypts chat messages. Face ID or fingerprint availability is controlled by your device, and removing the site link does not delete credentials from its passkey manager.</p>
       </section>
     </div>}
     {passwordChangeOpen && <div className="master-chat-feature-modal-backdrop" role="presentation" onMouseDown={event => {if(event.target===event.currentTarget && !accountPasswordBusy)setPasswordChangeOpen(false);}}>
