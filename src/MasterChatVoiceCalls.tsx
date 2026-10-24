@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
+import { setSafeRemoteAudioVolume, VOICE_MICROPHONE_CONSTRAINTS } from './voiceAudio';
 
 type ChatProfile = { id: string; username: string };
 type CallRow = {
@@ -230,6 +231,8 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       const audio = remoteAudioRef.current;
       if (!audio) return;
       audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+      // Keep incoming audio at a conservative level on mobile speakers and other high-gain devices.
+      setSafeRemoteAudioVolume(audio);
       void audio.play().catch(() => setNotice('Tap the audio control to allow call playback.'));
     };
     pc.onconnectionstatechange = () => {
@@ -307,7 +310,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         throw new Error('This browser does not support secure audio calling. Use an up-to-date browser over HTTPS.');
       }
       const local = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: VOICE_MICROPHONE_CONSTRAINTS,
         video: false,
       });
       localStreamRef.current = local;
@@ -358,7 +361,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         throw new Error('This browser does not support secure audio calling. Use an up-to-date browser over HTTPS.');
       }
       const local = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: VOICE_MICROPHONE_CONSTRAINTS,
         video: false,
       });
       localStreamRef.current = local;
