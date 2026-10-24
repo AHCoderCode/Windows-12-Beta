@@ -114,21 +114,32 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     if (error) {
       let serviceCode = '';
       let httpStatus = 0;
+      let platformCode = '';
       const context = (error as { context?: unknown }).context;
       if (context instanceof Response) {
         httpStatus = context.status;
+        platformCode = context.headers.get('sb-error-code') ?? '';
         try {
           const body = await context.clone().json() as { error?: unknown };
           if (typeof body.error === 'string') serviceCode = body.error;
         } catch { /* Some gateway errors do not return JSON. */ }
       }
       if (serviceCode === 'private_relay_not_configured') {
-        throw new Error('Secure voice calling is not configured on the server yet. No call was placed. Configure METERED_TURN_DOMAIN and METERED_TURN_API_KEY in the Supabase Edge Function secrets.');
+        throw new Error('Secure voice calling is not configured on the server. The relay administrator must configure METERED_TURN_DOMAIN and METERED_TURN_API_KEY in Supabase Edge Function secrets.');
+      }
+      if (serviceCode === 'invalid_session' || serviceCode === 'authentication_required' || platformCode === 'UNAUTHORIZED_ASYMMETRIC_JWT' || httpStatus === 401) {
+        throw new Error('The secure call server rejected this sign-in session. Sign out of Master Chat, sign back in, and retry. No call was connected.');
+      }
+      if (serviceCode === 'rate_limited' || httpStatus === 429) {
+        throw new Error('Too many secure relay requests were made recently. Wait a minute, then try calling again. No call was connected.');
       }
       if (serviceCode === 'private_relay_unavailable' || serviceCode === 'backend_configuration_unavailable' || httpStatus === 503 || httpStatus === 502) {
-        throw new Error('The secure voice relay is unavailable (server HTTP ' + (httpStatus || 'error') + '). No call was connected, and the recipient will not be shown a false incoming call. Check the Supabase relay function and Metered TURN credential.');
+        throw new Error('The secure voice relay service is unavailable (server HTTP ' + (httpStatus || 'error') + '). No voice connection was made. Please retry after the relay service recovers.');
       }
-      throw new Error('Could not prepare the secure voice relay. No call was connected. Please try again after the server relay issue is fixed.');
+      if (serviceCode === 'call_not_active' || serviceCode === 'call_expired' || serviceCode === 'call_not_found_or_forbidden') {
+        throw new Error('This call expired or is no longer active. Start a new call and have the other person accept promptly.');
+      }
+      throw new Error('The secure voice relay could not be prepared (server HTTP ' + (httpStatus || 'unknown') + (platformCode ? ', ' + platformCode : '') + '). No call was connected. Try again, and contact the app owner if it continues.');
     }
     const returnedServers = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
     const turnServers: RTCIceServer[] = returnedServers.flatMap(server => {
@@ -354,7 +365,9 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     const current = activeCallRef.current;
     if (!enabled || !client || !profile || !current || current.direction !== 'incoming' || busy) return;
     setBusy(true);
-    setCallState('connecting');
+    // Keep the incoming-call controls in place while permissions and relay setup run.
+    // Swapping the Accept button for Cancel during a touch can cause the same tap
+    // to activate Cancel on mobile browsers.
     setNotice('');
     if (ringTimerRef.current !== null) window.clearTimeout(ringTimerRef.current);
     ringTimerRef.current = null;
@@ -375,10 +388,15 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         .select('id, caller_id, callee_id, status, created_at, updated_at').maybeSingle();
       if (error || !data) throw new Error('This call is no longer available or could not be accepted.');
       setCall({ ...current, ...data as CallRow, direction: 'incoming', peer: current.peer });
+      // Only transition to the in-call controls after the server confirms acceptance.
+      setCallState('connecting');
       await replaySignals(current.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not accept the voice call.';
-      try { await client.from('aeroshell_calls').update({ status: 'ended' }).eq('id', current.id).in('status', ['ringing', 'accepted']); } catch { /* Local cleanup must still run. */ }
+      const terminalStatus = activeCallRef.current?.status === 'accepted' ? 'ended' : 'rejected';
+      try {
+        await client.from('aeroshell_calls').update({ status: terminalStatus }).eq('id', current.id).in('status', ['ringing', 'accepted']);
+      } catch { /* Local cleanup must still run. */ }
       cleanupLocal();
       setNotice(message);
     } finally {
@@ -555,7 +573,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         <h3>{activeCall.peer.username}</h3>
         <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming audio call' : callState === 'preparing' ? 'Preparing secure audio…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
         <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode: direct connections are disabled to avoid exposing your IP address to the other caller. WebRTC encrypts the audio stream, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; Cloudflare may observe relay IP/session metadata, not the audio content.</span></div>
-        {callState === 'incoming' ? <div className="master-chat-call-actions"><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
+        {callState === 'incoming' ? <div className="master-chat-call-actions"><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" disabled={busy} onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
           : callState === 'connected' ? <div className="master-chat-call-actions">
             <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} {muted ? 'Unmute' : 'Mute'}</button>
             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> End call</button>
