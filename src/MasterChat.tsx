@@ -11,6 +11,7 @@ type MessageType = 'text' | 'file' | 'voice';
 type ScheduledChatMessage = { id: string; user_id: string; recipient_id: string | null; group_id: string | null; body: string; send_at: string };
 const SCHEDULED_CHAT_MESSAGES_KEY = 'aeroshell.master-chat.scheduled-messages.v1';
 const scheduledWorkerInFlight = new Set<string>();
+const scheduledWorkerDelivered = new Set<string>();
 const scheduledWorkerRetryAt = new Map<string, number>();
 
 function readScheduledChatMessages(): ScheduledChatMessage[] {
@@ -26,8 +27,8 @@ function readScheduledChatMessages(): ScheduledChatMessage[] {
   } catch { return []; }
 }
 
-function writeScheduledChatMessages(items: ScheduledChatMessage[]) {
-  try { localStorage.setItem(SCHEDULED_CHAT_MESSAGES_KEY, JSON.stringify(items)); } catch { /* A scheduled message cannot be queued if local storage is blocked. */ }
+function writeScheduledChatMessages(items: ScheduledChatMessage[]): boolean {
+  try { localStorage.setItem(SCHEDULED_CHAT_MESSAGES_KEY, JSON.stringify(items)); return true; } catch { return false; }
 }
 
 function asLocalDateTimeInput(date: Date) {
@@ -208,7 +209,7 @@ export async function processMasterChatScheduledMessages() {
   if (!userId) return;
   const due = readScheduledChatMessages().filter(item => item.user_id === userId && Date.parse(item.send_at) <= Date.now());
   for (const item of due) {
-    if (scheduledWorkerInFlight.has(item.id) || (scheduledWorkerRetryAt.get(item.id) ?? 0) > Date.now()) continue;
+    if (scheduledWorkerInFlight.has(item.id) || scheduledWorkerDelivered.has(item.id) || (scheduledWorkerRetryAt.get(item.id) ?? 0) > Date.now()) continue;
     scheduledWorkerInFlight.add(item.id);
     try {
       const { data, error } = await supabaseClient.from('aeroshell_messages').insert({
@@ -220,8 +221,9 @@ export async function processMasterChatScheduledMessages() {
       }).select('id').single();
       if (error || !data) throw error ?? new Error('The message was not saved by the server.');
       scheduledWorkerRetryAt.delete(item.id);
+      scheduledWorkerDelivered.add(item.id);
       const remaining = readScheduledChatMessages().filter(queued => queued.id !== item.id);
-      writeScheduledChatMessages(remaining);
+      if (!writeScheduledChatMessages(remaining)) scheduledWorkerRetryAt.set(item.id, Number.MAX_SAFE_INTEGER);
       window.dispatchEvent(new CustomEvent('aeroshell-master-chat-scheduled-sent', { detail: { id: item.id, user_id: item.user_id } }));
     } catch {
       scheduledWorkerRetryAt.set(item.id, Date.now() + 60000);
@@ -854,7 +856,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     };
     try {
       const next = [...readScheduledChatMessages().filter(existing => existing.id !== item.id), item].sort((left, right) => Date.parse(left.send_at) - Date.parse(right.send_at));
-      writeScheduledChatMessages(next);
+      if (!writeScheduledChatMessages(next)) {
+        setScheduleError('This browser is blocking local storage, so the message could not be scheduled.');
+        return;
+      }
       setScheduledMessages(next);
       setDraft('');
       setScheduleDialogOpen(false);
