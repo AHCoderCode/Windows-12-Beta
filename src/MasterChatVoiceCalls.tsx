@@ -52,6 +52,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
   const [notice, setNotice] = useState('');
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [mainVideo, setMainVideo] = useState<'remote' | 'local'>('remote');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -102,6 +103,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     setCallState('idle');
     setMuted(false);
     setCameraOff(false);
+    setMainVideo('remote');
     setConnectedAt(null);
     setElapsedSeconds(0);
     setBusy(false);
@@ -632,24 +634,44 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window" disabled={busy}
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
         {activeCall.media_type !== 'video' && <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.username.slice(0,1).toUpperCase()}</div>}
-        {activeCall.media_type === 'video' && <div className="master-chat-call-video-stage">
-          <video ref={remoteVideoRef} autoPlay playsInline aria-label="Video from your friend"/>
-          <video ref={localVideoRef} autoPlay playsInline muted aria-label="Your camera preview" className="self-view"/>
-          {callState !== 'connected' && <span className="master-chat-video-status">{callState === 'incoming' ? 'Incoming video call' : callState === 'outgoing' ? 'Calling…' : callState === 'preparing' ? 'Preparing your camera…' : 'Connecting video…'}</span>}
-        </div>}
-        <p className="eyebrow">AEROSHELL · {activeCall.media_type === 'video' ? 'VIDEO CALL' : 'VOICE CALL'}</p>
-        <h3>{activeCall.peer.username}</h3>
-        <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming ' + (activeCall.media_type === 'video' ? 'video' : 'audio') + ' call' : callState === 'preparing' ? 'Preparing secure ' + (activeCall.media_type === 'video' ? 'camera' : 'audio') + '…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
-        <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode disables direct connections to avoid exposing your IP address. WebRTC encrypts call media in transit, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; the relay provider may observe IP/session metadata, not media content.</span></div>
-        {callState === 'incoming' ? <div className="master-chat-call-actions"><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" disabled={busy} onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
-          : callState === 'connected' ? <div className="master-chat-call-actions">
-            <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} {muted ? 'Unmute' : 'Mute'}</button>
-            {activeCall.media_type === 'video' && <button type="button" className={cameraOff ? 'muted' : 'neutral'} onClick={toggleCamera}>{cameraOff ? <CameraOff size={17}/> : <Camera size={17}/>} {cameraOff ? 'Camera on' : 'Camera off'}</button>}
-             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> End call</button>
-          </div> : <div className="master-chat-call-actions">
+        {activeCall.media_type === 'video' && <>
+          <div className="master-chat-call-video-stage">
+            <video ref={remoteVideoRef} autoPlay playsInline
+              className={mainVideo === 'remote' ? 'master-chat-call-video-main' : 'master-chat-call-video-thumb remote-thumb'}
+              aria-label={'Video from ' + activeCall.peer.username} role="button" tabIndex={0}
+              title={'Show ' + activeCall.peer.username + ' full screen'}
+              onClick={() => setMainVideo('remote')}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMainVideo('remote'); } }}/>
+            <video ref={localVideoRef} autoPlay playsInline muted
+              className={mainVideo === 'local' ? 'master-chat-call-video-main self-view' : 'master-chat-call-video-thumb self-view'}
+              aria-label="Your camera preview" role="button" tabIndex={0}
+              title="Show your camera full screen"
+              onClick={() => setMainVideo('local')}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMainVideo('local'); } }}/>
+            {callState !== 'connected' && <span className="master-chat-video-status">{callState === 'incoming' ? 'Incoming video call' : callState === 'outgoing' ? 'Calling…' : callState === 'preparing' ? 'Preparing your camera…' : callState === 'connecting' ? 'Connecting through the secure relay…' : 'Connecting video…'}</span>}
+          </div>
+          <header className="master-chat-video-call-header">
+            <span className="master-chat-video-call-avatar">{activeCall.peer.avatar_data ? <img src={activeCall.peer.avatar_data} alt=""/> : activeCall.peer.username.slice(0,1).toUpperCase()}</span>
+            <span className="master-chat-video-call-person"><b>{activeCall.peer.username}</b><small>{callState === 'incoming' ? 'Incoming video call' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'outgoing' ? 'Calling…' : callState === 'preparing' ? 'Preparing camera…' : 'Connecting…'}</small></span>
+            <span className="master-chat-video-call-protected"><ShieldCheck size={14}/> Private relay</span>
+          </header>
+        </>}
+        {activeCall.media_type !== 'video' && <>
+          <p className="eyebrow">AEROSHELL · VOICE CALL</p>
+          <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.avatar_data ? <img src={activeCall.peer.avatar_data} alt=""/> : activeCall.peer.username.slice(0,1).toUpperCase()}</div>
+          <h3>{activeCall.peer.username}</h3>
+          <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming voice call' : callState === 'preparing' ? 'Preparing secure audio…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
+          <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode disables direct connections to avoid exposing your IP address. WebRTC encrypts call media in transit, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; the relay provider may observe IP/session metadata, not media content.</span></div>
+        </>}
+        {callState === 'incoming' ? <div className={'master-chat-call-actions'+(activeCall.media_type === 'video' ? ' video-floating-controls incoming' : '')}><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" disabled={busy} onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
+          : callState === 'connected' ? <div className={'master-chat-call-actions'+(activeCall.media_type === 'video' ? ' video-floating-controls' : '')}>
+            <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} <span>{muted ? 'Unmute' : 'Mute'}</span></button>
+            {activeCall.media_type === 'video' && <button type="button" className={cameraOff ? 'muted' : 'neutral'} onClick={toggleCamera}>{cameraOff ? <CameraOff size={17}/> : <Camera size={17}/>} <span>{cameraOff ? 'Camera on' : 'Camera off'}</span></button>}
+             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> <span>End call</span></button>
+          </div> : <div className={'master-chat-call-actions'+(activeCall.media_type === 'video' ? ' video-floating-controls' : '')}>
             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call cancelled.')}><PhoneOff size={17}/> Cancel call</button>
           </div>}
-        <small className="master-chat-call-footer"><AlertTriangle size={13}/> Calls are never auto-answered. Only accept calls from people you recognize.</small>
+        {activeCall.media_type !== 'video' && <small className="master-chat-call-footer"><AlertTriangle size={13}/> Calls are never auto-answered. Only accept calls from people you recognize.</small>}
       </section>
     </div>, portalRoot ?? document.body)}
     {quietIncoming && <span className="master-chat-visually-hidden">Incoming call is muted.</span>}
