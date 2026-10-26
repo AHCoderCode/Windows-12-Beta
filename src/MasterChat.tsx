@@ -779,7 +779,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       await loadFriendRequests(profile.id);
       if (decision === 'accepted') {
         await loadPeople(profile.id);
-        tell('Friend request accepted. You can now chat and call each other.', 'success');
+        tell('Friend request accepted. You are now friends and can chat, voice call, or video call.', 'success');
       } else tell('Friend request declined.', 'info');
     } catch (error) {
       tell(error instanceof Error ? error.message : 'Could not update this friend request.', 'error');
@@ -2601,7 +2601,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
      </>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
-       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search users (3+ characters)" aria-label="Search friends or usernames"/></label>
+       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search usernames (3+ characters)" aria-label="Search friends or usernames"/></label>
        {peopleQuery.trim().length > 0 && peopleQuery.trim().length < 3 && <p className="master-chat-search-hint">Type at least 3 characters to find a username.</p>}
        {peopleQuery.trim().length >= 3 && <div className="master-chat-directory-results">
          <div className="master-chat-list-heading"><Search size={14}/><span>FIND PEOPLE</span><small>{directorySearchBusy ? '…' : directoryResults.length}</small></div>
@@ -2616,29 +2616,40 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
            const outbound = relation?.status === 'pending' && relation.requester_id === profile.id;
            return <div className="master-chat-directory-result" key={person.id}>
              <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
-             <span className="master-chat-person-meta"><b>{person.username}</b><small>{inbound ? 'Sent you a friend request' : outbound ? 'Request pending' : 'Not friends yet'}</small></span>
+             <span className="master-chat-person-meta">
+               <b>{person.username}</b>
+               <small>{inbound ? 'Sent you a friend request' : outbound ? 'Friend request pending' : person.username.toLowerCase() === peopleQuery.trim().toLowerCase() ? 'Exact username match' : 'Not friends yet'}</small>
+             </span>
              {inbound
-               ? <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(relation!, 'accepted')} disabled={friendRequestBusyId===relation!.id}>Accept</button>
+               ? <span className="master-chat-friend-pending">Review request below</span>
                : outbound
-                 ? <span className="master-chat-friend-pending">Requested</span>
-                 : <button type="button" className="master-chat-friend-add" onClick={() => void sendFriendRequest(person)} disabled={!!friendRequestBusyId}>{friendRequestBusyId===person.id?'Sending…':'Befriend'}</button>}
+                 ? <span className="master-chat-friend-pending">Request sent</span>
+                 : <button type="button" className="master-chat-friend-add" onClick={() => void sendFriendRequest(person)} disabled={!!friendRequestBusyId}>{friendRequestBusyId===person.id?'Sending…':'Add Friend'}</button>}
            </div>;
          })}
          {!directorySearchBusy && !directorySearchError && !directoryResults.length && <p className="master-chat-friend-empty">No matching usernames found.</p>}
        </div>}
-       {incomingFriendRequests.length > 0 && <section className="master-chat-friend-requests">
-         <div className="master-chat-list-heading"><Users size={14}/><span>FRIEND REQUESTS</span><small>{incomingFriendRequests.length}</small></div>
-         {incomingFriendRequests.map(request => {
-           const person = people.find(item => item.id === request.requester_id);
-           if (!person) return null;
+       <section className="master-chat-friend-requests" aria-labelledby="master-chat-friend-requests-heading">
+         <div className="master-chat-list-heading">
+           <UserPlus size={14}/>
+           <span id="master-chat-friend-requests-heading">FRIEND REQUESTS</span>
+           <small aria-label={incomingFriendRequests.length + ' incoming friend requests'}>{incomingFriendRequests.length}</small>
+           <button type="button" className="master-chat-request-refresh" title="Refresh friend requests" aria-label="Refresh friend requests"
+             onClick={() => { void loadFriendRequests(profile.id); void loadPeople(profile.id); }}>
+             <MoreHorizontal size={14}/>
+           </button>
+         </div>
+         {incomingFriendRequests.length ? incomingFriendRequests.map(request => {
+           const person = people.find(item => item.id === request.requester_id)
+             ?? { id: request.requester_id, username: 'Unknown user' };
            return <div className="master-chat-directory-result" key={request.id}>
              <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
              <span className="master-chat-person-meta"><b>{person.username}</b><small>Wants to be your friend</small></span>
-             <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(request, 'accepted')} disabled={!!friendRequestBusyId}>{friendRequestBusyId===request.id?'…':'Accept'}</button>
-             <button type="button" className="master-chat-friend-decline" onClick={() => void respondToFriendRequest(request, 'declined')} disabled={!!friendRequestBusyId} aria-label={'Decline friend request from '+person.username}>Decline</button>
+             <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(request, 'accepted')} disabled={!!friendRequestBusyId}>{friendRequestBusyId===request.id?'Accepting…':'Accept'}</button>
+             <button type="button" className="master-chat-friend-decline" onClick={() => void respondToFriendRequest(request, 'declined')} disabled={!!friendRequestBusyId} aria-label={'Decline friend request from '+person.username}>{friendRequestBusyId===request.id?'…':'Decline'}</button>
            </div>;
-         })}
-       </section>}
+         }) : <p className="master-chat-friend-empty">No incoming requests yet. When someone adds you, accept or decline it here.</p>}
+       </section>
        <div className="master-chat-list-heading"><Users size={14}/><span>FRIENDS</span><small>{filteredPeople.length}</small></div>
        <div className="master-chat-people">
          {filteredPeople.map(person => <button type="button" className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
