@@ -45,8 +45,12 @@ create unique index if not exists aeroshell_calls_one_group_leg_idx on public.ae
 alter table public.aeroshell_group_calls enable row level security;
 alter table public.aeroshell_group_call_participants enable row level security;
 alter table public.aeroshell_group_call_signals enable row level security;
-grant select, insert, update on public.aeroshell_group_calls to authenticated;
-grant select, insert, update on public.aeroshell_group_call_participants to authenticated;
+grant select, insert on public.aeroshell_group_calls to authenticated;
+revoke update on table public.aeroshell_group_calls from authenticated;
+grant update (status, ended_at) on table public.aeroshell_group_calls to authenticated;
+grant select, insert on public.aeroshell_group_call_participants to authenticated;
+revoke update on table public.aeroshell_group_call_participants from authenticated;
+grant update (status, responded_at) on table public.aeroshell_group_call_participants to authenticated;
 grant select, insert on public.aeroshell_group_call_signals to authenticated;
 grant insert (caller_id, callee_id, media_type, group_call_id) on public.aeroshell_calls to authenticated;
 grant update (status) on public.aeroshell_calls to authenticated;
