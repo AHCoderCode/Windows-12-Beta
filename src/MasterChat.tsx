@@ -446,6 +446,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [noticeKind, setNoticeKind] = useState<'error' | 'success' | 'info'>('info');
   const [people, setPeople] = useState<ChatProfile[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [friendRequestPopup, setFriendRequestPopup] = useState<FriendRequest | null>(null);
+  const friendRequestSeenIdsRef = useRef<Set<string>>(new Set());
   const [peopleQuery, setPeopleQuery] = useState('');
   const [directoryResults, setDirectoryResults] = useState<ChatProfile[]>([]);
   const [directorySearchBusy, setDirectorySearchBusy] = useState(false);
@@ -716,14 +718,14 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPeople((data ?? []) as ChatProfile[]);
   }, []);
 
-  const loadFriendRequests = useCallback(async (userId: string) => {
+  const loadFriendRequests = useCallback(async (userId: string, quiet = false) => {
     if (!supabaseClient) return;
     const { data, error } = await supabaseClient.from('aeroshell_friend_requests')
       .select('id, requester_id, recipient_id, status, created_at, responded_at')
       .or('requester_id.eq.' + userId + ',recipient_id.eq.' + userId)
       .order('created_at', { ascending: false }).limit(500);
     if (error) {
-      tell('Friend requests could not load. Refresh and check the friend-request database migration.', 'error');
+      if (!quiet) tell('Friend requests could not load. Please check your connection and refresh.', 'error');
       return;
     }
     const rows = (data ?? []) as FriendRequest[];
@@ -747,24 +749,31 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       (row.requester_id === profile.id && row.recipient_id === person.id)
       || (row.requester_id === person.id && row.recipient_id === profile.id)
     );
-    if (existing?.status === 'accepted') { tell('You are already friends.', 'info'); return; }
+    if (existing?.status === 'accepted') { tell('You are already friends. Open this person from your Friends list.', 'info'); return; }
     if (existing?.status === 'pending') {
-      tell(existing.requester_id === profile.id ? 'Friend request already sent.' : 'This person has already requested you. Accept it below.', 'info');
+      tell(existing.requester_id === profile.id ? 'Friend request already sent.' : 'This person has already requested you. Accept or decline it in Friend Requests.', 'info');
       return;
     }
     setFriendRequestBusyId(person.id);
     try {
-      const { error } = await supabaseClient.from('aeroshell_friend_requests').insert({
-        requester_id: profile.id, recipient_id: person.id, status: 'pending',
-      });
-      if (error) {
-        await loadFriendRequests(profile.id);
-        const detail = error.message.toLowerCase();
-        tell(detail.includes('duplicate') || detail.includes('unique') ? 'A request or friendship already exists for this username.' : 'Friend request could not be sent. Please retry.', 'error');
+      const { data: createdRequest, error } = await supabaseClient.from('aeroshell_friend_requests')
+        .insert({ requester_id: profile.id, recipient_id: person.id, status: 'pending' })
+        .select('id, requester_id, recipient_id, status, created_at, responded_at')
+        .single();
+      if (error || !createdRequest) {
+        await loadFriendRequests(profile.id, true);
+        const detail = (error?.message ?? '').toLowerCase();
+        tell(detail.includes('duplicate') || detail.includes('unique') || detail.includes('one_active_pair')
+          ? 'A friend request already exists or you are already friends with this person.'
+          : 'Friend request could not be sent. Please retry. If this keeps happening, refresh the app and try again.', 'error');
         return;
       }
-      await loadFriendRequests(profile.id);
-      tell('Friend request sent to ' + person.username + '. They must accept before you can chat or call.', 'success');
+      const newRequest = createdRequest as FriendRequest;
+      setFriendRequests(current => [newRequest, ...current.filter(row => row.id !== newRequest.id)]);
+      void loadFriendRequests(profile.id, true);
+      tell('Friend request sent to ' + person.username + '. They can accept or decline it in Friend Requests.', 'success');
+    } catch {
+      tell('Friend request could not be sent because the connection was interrupted. Please retry.', 'error');
     } finally { setFriendRequestBusyId(''); }
   };
 
@@ -882,6 +891,8 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         setProfile(null);
         setPeople([]);
         setFriendRequests([]);
+        friendRequestSeenIdsRef.current.clear();
+        setFriendRequestPopup(null);
         setGroups([]);
         setActivePerson(null);
         setActiveGroup(null);
@@ -1130,6 +1141,38 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     [friendRequests, profile?.id]);
   const friends = useMemo(() => people.filter(person => friendIds.has(person.id)), [people, friendIds]);
   const incomingFriendRequests = useMemo(() => friendRequests.filter(request => request.status === 'pending' && request.recipient_id === profile?.id), [friendRequests, profile?.id]);
+
+  // Alert immediately when a new incoming request lands. The inbox remains the source of truth,
+  // and polling below provides a fallback if the browser's realtime subscription is interrupted.
+  useEffect(() => {
+    if (!profile?.id) {
+      friendRequestSeenIdsRef.current.clear();
+      setFriendRequestPopup(null);
+      return;
+    }
+    const unseen = incomingFriendRequests.find(request => !friendRequestSeenIdsRef.current.has(request.id));
+    incomingFriendRequests.forEach(request => friendRequestSeenIdsRef.current.add(request.id));
+    if (unseen) setFriendRequestPopup(current => current?.id === unseen.id ? current : unseen);
+  }, [incomingFriendRequests, profile?.id]);
+
+  useEffect(() => {
+    if (!pinUnlocked || !session || !profile || !supabaseClient) return;
+    let refreshing = false;
+    const refreshRequests = () => {
+      if (refreshing || document.visibilityState === 'hidden') return;
+      refreshing = true;
+      void loadFriendRequests(profile.id, true).finally(() => { refreshing = false; });
+    };
+    const interval = window.setInterval(refreshRequests, 6000);
+    window.addEventListener('focus', refreshRequests);
+    document.addEventListener('visibilitychange', refreshRequests);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshRequests);
+      document.removeEventListener('visibilitychange', refreshRequests);
+    };
+  }, [pinUnlocked, session, profile?.id, loadFriendRequests]);
+
   const filteredPeople = useMemo(() => {
     const query = peopleQuery.trim().toLowerCase();
     return friends.filter(person => !query || person.username.toLowerCase().includes(query));
@@ -2593,6 +2636,20 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
     <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={friends} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
+    {friendRequestPopup && <div className="master-chat-friend-request-popup-overlay" role="presentation">
+      <section className="master-chat-friend-request-popup" role="dialog" aria-modal="true" aria-labelledby="master-chat-friend-request-popup-title">
+        <button type="button" className="master-chat-friend-request-popup-close" aria-label="Close friend request notification"
+          onClick={() => setFriendRequestPopup(null)}><X size={17}/></button>
+        <span className="master-chat-friend-request-popup-icon"><UserPlus size={22}/></span>
+        <p className="master-chat-friend-request-popup-eyebrow">NEW FRIEND REQUEST</p>
+        <h3 id="master-chat-friend-request-popup-title">{people.find(person => person.id === friendRequestPopup.requester_id)?.username ?? 'Someone'} wants to be your friend</h3>
+        <p className="master-chat-friend-request-popup-message">Accept to add this person to your Friends list and unlock direct messages, voice calls, and video calls. You can also decline and receive another request from them later.</p>
+        <div className="master-chat-friend-request-popup-actions">
+          <button type="button" className="master-chat-friend-decline" onClick={() => { const request = friendRequestPopup; setFriendRequestPopup(null); void respondToFriendRequest(request, 'declined'); }}>Decline</button>
+          <button type="button" className="master-chat-friend-add" onClick={() => { const request = friendRequestPopup; setFriendRequestPopup(null); void respondToFriendRequest(request, 'accepted'); }}><Check size={15}/> Accept friend</button>
+        </div>
+      </section>
+    </div>}
     {conversationFullscreen && <>
        {iosMode
          ? createPortal(<button type="button" className="master-chat-fullscreen-exit master-chat-ios-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>, document.body)
