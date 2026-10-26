@@ -339,6 +339,7 @@ const formatVoiceTime = (seconds: number) => {
   return Math.floor(safe / 60) + ':' + String(safe % 60).padStart(2, '0');
 };
 const VOICE_WAVEFORM = [8,13,19,11,23,15,9,17,25,12,20,15,8,18,27,12,22,16,10,24,14,19,9,26,15,21,11,17,24,13,8,20,15,26,12,18];
+const VOICE_MESSAGE_PLAY_EVENT = 'aeroshell-master-chat:voice-message-play';
 
 function MasterChatVoicePlayer({ src, durationMs }: { src: string; durationMs?: number | null }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -361,6 +362,11 @@ function MasterChatVoicePlayer({ src, durationMs }: { src: string; durationMs?: 
     };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
+    const pauseForOtherVoiceMessage = (event: Event) => {
+      const activeAudio = (event as CustomEvent<HTMLAudioElement>).detail;
+      if (activeAudio && activeAudio !== audio) audio.pause();
+    };
+    window.addEventListener(VOICE_MESSAGE_PLAY_EVENT, pauseForOtherVoiceMessage);
     const onEnded = () => { setPlaying(false); setCurrentTime(Number.isFinite(audio.duration) ? audio.duration : 0); };
     const onError = () => { setPlaying(false); setLoadError(true); };
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -371,6 +377,7 @@ function MasterChatVoicePlayer({ src, durationMs }: { src: string; durationMs?: 
     audio.addEventListener('error', onError);
     return () => {
       audio.pause();
+      window.removeEventListener(VOICE_MESSAGE_PLAY_EVENT, pauseForOtherVoiceMessage);
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('play', onPlay);
@@ -385,6 +392,7 @@ function MasterChatVoicePlayer({ src, durationMs }: { src: string; durationMs?: 
     if (!audio || loadError) return;
     if (audio.paused) {
       setLoadError(false);
+      window.dispatchEvent(new CustomEvent<HTMLAudioElement>(VOICE_MESSAGE_PLAY_EVENT, { detail: audio }));
       void audio.play().catch(() => { setPlaying(false); setLoadError(true); });
     } else audio.pause();
   };
@@ -439,6 +447,10 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [people, setPeople] = useState<ChatProfile[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [peopleQuery, setPeopleQuery] = useState('');
+  const [directoryResults, setDirectoryResults] = useState<ChatProfile[]>([]);
+  const [directorySearchBusy, setDirectorySearchBusy] = useState(false);
+  const [directorySearchError, setDirectorySearchError] = useState('');
+  const directorySearchSequenceRef = useRef(0);
   const [friendRequestBusyId, setFriendRequestBusyId] = useState('');
   const [activePerson, setActivePerson] = useState<ChatProfile | null>(null);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
@@ -669,10 +681,24 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const loadPeople = useCallback(async (userId: string) => {
     if (!supabaseClient) return;
-    const { data, error } = await supabaseClient.from('aeroshell_profiles').select('id, username, avatar_data')
-      .neq('id', userId).order('username', { ascending: true }).limit(200);
+    const { data: relations, error: relationsError } = await supabaseClient
+      .from('aeroshell_friend_requests').select('requester_id, recipient_id')
+      .or('requester_id.eq.' + userId + ',recipient_id.eq.' + userId)
+      .order('created_at', { ascending: false }).limit(500);
+    if (relationsError) {
+      tell('Your friends and requests could not load. Please refresh and try again.', 'error');
+      return;
+    }
+    const relatedIds = Array.from(new Set((relations ?? []).flatMap(row => [row.requester_id, row.recipient_id])))
+      .filter(id => id !== userId);
+    if (!relatedIds.length) {
+      setPeople([]);
+      return;
+    }
+    const { data, error } = await supabaseClient.from('aeroshell_profiles')
+      .select('id, username, avatar_data').in('id', relatedIds).order('username', { ascending: true });
     if (error) {
-      tell('Member directory is unavailable. Check the database policies and setup SQL.', 'error');
+      tell('Your contacts could not load. Please refresh and try again.', 'error');
       return;
     }
     setPeople((data ?? []) as ChatProfile[]);
@@ -1096,12 +1122,44 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     const query = peopleQuery.trim().toLowerCase();
     return friends.filter(person => !query || person.username.toLowerCase().includes(query));
   }, [friends, peopleQuery]);
-  const directoryResults = useMemo(() => {
+  useEffect(() => {
+    const sequence = ++directorySearchSequenceRef.current;
     const query = peopleQuery.trim().toLowerCase();
-    if (query.length < 2 || !profile) return [];
-    return people.filter(person => person.id !== profile.id && !friendIds.has(person.id) && person.username.toLowerCase().includes(query))
-      .sort((a, b) => a.username.localeCompare(b.username)).slice(0, 8);
-  }, [people, peopleQuery, profile, friendIds]);
+    setDirectorySearchError('');
+    if (query.length < 3 || !profile || !supabaseClient) {
+      setDirectoryResults([]);
+      setDirectorySearchBusy(false);
+      return;
+    }
+
+    setDirectoryResults([]);
+    setDirectorySearchBusy(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const { data, error } = await supabaseClient.rpc('aeroshell_search_profiles', { search_query: query });
+          if (sequence !== directorySearchSequenceRef.current) return;
+          if (error) {
+            setDirectoryResults([]);
+            setDirectorySearchError(error.code === '54000' || /too many username searches|rate limit/i.test(error.message)
+              ? 'Too many searches. Wait a minute and try again.'
+              : 'Username search is temporarily unavailable. Please try again.');
+            return;
+          }
+          setDirectoryResults(((data ?? []) as ChatProfile[])
+            .filter(person => person.id !== profile.id && !friendIds.has(person.id)));
+        } catch {
+          if (sequence === directorySearchSequenceRef.current) {
+            setDirectoryResults([]);
+            setDirectorySearchError('Username search is temporarily unavailable. Please try again.');
+          }
+        } finally {
+          if (sequence === directorySearchSequenceRef.current) setDirectorySearchBusy(false);
+        }
+      })();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [peopleQuery, profile?.id, friendIds]);
 
   const filteredGroups = useMemo(() => {
     const query = peopleQuery.trim().toLowerCase();
@@ -2531,9 +2589,12 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
      </>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
-       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search friends or usernames" aria-label="Search friends or usernames"/></label>
-       {peopleQuery.trim().length >= 2 && <div className="master-chat-directory-results">
-         <div className="master-chat-list-heading"><Search size={14}/><span>FIND PEOPLE</span><small>{directoryResults.length}</small></div>
+       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search users (3+ characters)" aria-label="Search friends or usernames"/></label>
+       {peopleQuery.trim().length > 0 && peopleQuery.trim().length < 3 && <p className="master-chat-search-hint">Type at least 3 characters to find a username.</p>}
+       {peopleQuery.trim().length >= 3 && <div className="master-chat-directory-results">
+         <div className="master-chat-list-heading"><Search size={14}/><span>FIND PEOPLE</span><small>{directorySearchBusy ? '…' : directoryResults.length}</small></div>
+         {directorySearchBusy && <p className="master-chat-friend-empty" role="status">Searching usernames…</p>}
+         {directorySearchError && <p className="master-chat-friend-empty" role="status">{directorySearchError}</p>}
          {directoryResults.map(person => {
            const relation = friendRequests.find(request =>
              (request.requester_id === profile.id && request.recipient_id === person.id)
@@ -2551,7 +2612,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
                  : <button type="button" className="master-chat-friend-add" onClick={() => void sendFriendRequest(person)} disabled={!!friendRequestBusyId}>{friendRequestBusyId===person.id?'Sending…':'Befriend'}</button>}
            </div>;
          })}
-         {!directoryResults.length && <p className="master-chat-friend-empty">No matching new users found.</p>}
+         {!directorySearchBusy && !directorySearchError && !directoryResults.length && <p className="master-chat-friend-empty">No matching usernames found.</p>}
        </div>}
        {incomingFriendRequests.length > 0 && <section className="master-chat-friend-requests">
          <div className="master-chat-list-heading"><Users size={14}/><span>FRIEND REQUESTS</span><small>{incomingFriendRequests.length}</small></div>
@@ -2603,7 +2664,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
       </div>
     </aside>
     <div className="master-chat-main">
-      {!activePerson && !activeGroup ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Choose a person for a private chat or create a group to start chatting together.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
+      {!activePerson && !activeGroup ? <div className="master-chat-welcome"><div className="master-chat-orb"><MessageCircle size={28}/></div><h2>Your conversations start here.</h2><p>Search a username, send a friend request, and wait for acceptance before starting a direct chat or voice/video call. Groups remain available from the sidebar.</p><span><Wifi size={14}/> {live ? 'Real-time connection active' : 'Connecting to real-time service'}</span></div> : <>
         <header className="master-chat-conversation-header">
           <button className="master-chat-back" title="Back to conversations" onClick={() => {setConversationFullscreen(false);setActivePerson(null);setActiveGroup(null);setMessages([]);setDraft('');setNotice('');}}><ArrowLeft size={17}/></button>
           {activeGroup
@@ -2683,6 +2744,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
           <div className="master-chat-composer-box">
             <textarea ref={inputRef} rows={1} maxLength={2000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={onComposerKeyDown} placeholder={activeGroup ? 'Message ' + activeGroup.name + '…' : 'Message ' + (activePerson?.username ?? '') + '…'} aria-label="Write a message" disabled={attachmentBusy}/>
             <div className="master-chat-composer-tools">
+              <span className="master-chat-composer-tools-label">QUICK ACTIONS</span>
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => attachmentInputRef.current?.click()} title="Attach a file, image, document or code file"><Paperclip size={16}/><span>Attach</span></button>
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing} onClick={() => { setPastedFileName('notes.txt'); setPastedFileContent(''); setPastedFileOpen(true); }} title="Create a file from pasted text or code"><FileText size={16}/><span>Text / code</span></button>
               <button type="button" className="master-chat-composer-tool" disabled={attachmentBusy || recordingVoice || voicePreparing || !draft.trim()} onClick={openScheduleDialog} title="Schedule this text message"><Clock3 size={16}/><span>Schedule</span></button>
