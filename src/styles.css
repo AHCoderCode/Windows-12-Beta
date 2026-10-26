@@ -2549,3 +2549,13 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-read-ticks.is-read{color:#2da7ff;opacity:1}
 @media(max-width:620px){.master-chat-header-close{width:32px;height:32px;border-radius:9px}.master-chat-app .master-chat-conversation-header{padding-right:8px!important}}
 
+/* Friend-only quick actions for direct voice and video calls. */
+.master-chat-active-call-actions{position:absolute;top:8px;right:10px;z-index:10;display:flex;align-items:center;gap:6px}
+.master-chat-active-call-actions .master-chat-voice-call-button{position:static;top:auto;right:auto;min-height:34px;height:34px}
+.master-chat-active-call-actions .master-chat-voice-call-button.video{border-color:color-mix(in srgb,#4d9dff 48%,var(--border));background:color-mix(in srgb,#4d9dff 12%,var(--solid))}
+.master-chat-active-call-actions .master-chat-voice-call-button.video svg{color:#347fd0}
+.master-chat-active-call-actions.portal{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 10px);z-index:2147483001}
+.master-chat-app.master-chat-conversation-fullscreen .master-chat-active-call-actions:not(.portal){position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 10px)}
+@media(max-width:560px){.master-chat-active-call-actions{top:7px;right:7px;gap:4px}.master-chat-active-call-actions .master-chat-voice-call-button{height:32px;min-height:32px;padding:0 8px}.master-chat-active-call-actions .master-chat-voice-call-button span{display:inline}.master-chat-active-call-actions.portal{top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 8px)}}
+@media(max-width:380px){.master-chat-active-call-actions{gap:3px}.master-chat-active-call-actions .master-chat-voice-call-button{padding:0 6px;font-size:9px}.master-chat-active-call-actions .master-chat-voice-call-button svg{width:14px;height:14px}}
+
