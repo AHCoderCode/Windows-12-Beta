@@ -590,12 +590,13 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
           <header><span><PhoneCall size={19}/><b>Who would you like to call?</b></span><button type="button" aria-label="Close call picker" onClick={() => setRecipientPickerOpen(false)}><X size={18}/></button></header>
           <p>Select a Master Chat member. The other person must accept before audio can connect.</p>
           <div className="master-chat-recipient-picker-list">
-            {people.filter(person => person.id !== profile.id).map(person => <button type="button" key={person.id} disabled={busy || !!activeCall} onClick={() => void startCall(person)}>
+            {people.filter(person => person.id !== profile.id).map(person => <div className="master-chat-recipient-row" key={person.id}>
               <span className="master-chat-recipient-avatar">{person.avatar_data ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
-              <span className="master-chat-recipient-label"><b>{person.username}</b><small>Start an audio call</small></span>
-              <PhoneCall size={17}/>
-            </button>)}
-            {!people.some(person => person.id !== profile.id) && <div className="master-chat-recipient-empty"><b>No one to call yet</b><span>Other Master Chat accounts will appear here.</span></div>}
+              <span className="master-chat-recipient-label"><b>{person.username}</b><small>Choose a call type</small></span>
+              <button type="button" className="master-chat-call-type-button" title={'Voice call '+person.username} aria-label={'Voice call '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'audio')}><PhoneCall size={17}/></button>
+              <button type="button" className="master-chat-call-type-button video" title={'Video call '+person.username} aria-label={'Video call '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'video')}><Video size={17}/></button>
+            </div>)}
+            {!people.some(person => person.id !== profile.id) && <div className="master-chat-recipient-empty"><b>No friends to call yet</b><span>Search a username and become friends first.</span></div>}
           </div>
           <small className="master-chat-recipient-security"><ShieldCheck size={14}/> Calls require the private TURN relay; there is no direct-IP fallback.</small>
         </section>
@@ -604,23 +605,29 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     {notice && createPortal(
       <div className="master-chat-voice-notice" role="status"><ShieldCheck size={14}/><span>{notice}</span><button aria-label="Dismiss call notice" title="Dismiss" onClick={() => setNotice('')}>×</button></div>, portalRoot ?? document.body
     )}
-    {activeCall && createPortal(<div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label="Voice call controls">
-      <section className="master-chat-call-card">
+    {activeCall && createPortal(<div className="master-chat-call-overlay" role="dialog" aria-modal="true" aria-label={activeCall.media_type === 'video' ? 'Video call controls' : 'Voice call controls'}>
+      <section className={'master-chat-call-card'+(activeCall.media_type === 'video' ? ' video-call' : '')}>
         <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window" disabled={busy}
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
-        <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.username.slice(0,1).toUpperCase()}</div>
-        <p className="eyebrow">AEROSHELL · VOICE ONLY</p>
+        {activeCall.media_type !== 'video' && <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.username.slice(0,1).toUpperCase()}</div>}
+        {activeCall.media_type === 'video' && <div className="master-chat-call-video-stage">
+          <video ref={remoteVideoRef} autoPlay playsInline aria-label="Video from your friend"/>
+          <video ref={localVideoRef} autoPlay playsInline muted aria-label="Your camera preview" className="self-view"/>
+          {callState !== 'connected' && <span className="master-chat-video-status">{callState === 'incoming' ? 'Incoming video call' : callState === 'outgoing' ? 'Calling…' : callState === 'preparing' ? 'Preparing your camera…' : 'Connecting video…'}</span>}
+        </div>}
+        <p className="eyebrow">AEROSHELL · {activeCall.media_type === 'video' ? 'VIDEO CALL' : 'VOICE CALL'}</p>
         <h3>{activeCall.peer.username}</h3>
-        <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming audio call' : callState === 'preparing' ? 'Preparing secure audio…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
-        <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode: direct connections are disabled to avoid exposing your IP address to the other caller. WebRTC encrypts the audio stream, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; Cloudflare may observe relay IP/session metadata, not the audio content.</span></div>
+        <p className="master-chat-call-state">{callState === 'incoming' ? 'Incoming ' + (activeCall.media_type === 'video' ? 'video' : 'audio') + ' call' : callState === 'preparing' ? 'Preparing secure ' + (activeCall.media_type === 'video' ? 'camera' : 'audio') + '…' : callState === 'outgoing' ? 'Calling…' : callState === 'connected' ? durationLabel(elapsedSeconds) : callState === 'connecting' ? 'Connecting through the relay…' : 'Starting call…'}</p>
+        <div className="master-chat-call-privacy"><ShieldCheck size={15}/><span>Relay-only mode disables direct connections to avoid exposing your IP address. WebRTC encrypts call media in transit, but this beta does not independently verify caller identity end-to-end. Supabase retains call metadata; the relay provider may observe IP/session metadata, not media content.</span></div>
         {callState === 'incoming' ? <div className="master-chat-call-actions"><button type="button" className="accept" disabled={busy} onClick={() => void acceptCall()}><PhoneIncoming size={17}/> {busy ? 'Connecting…' : 'Accept'}</button><button type="button" className="decline" disabled={busy} onClick={() => void rejectCall()}><PhoneOff size={17}/> Decline</button></div>
           : callState === 'connected' ? <div className="master-chat-call-actions">
             <button type="button" className={muted ? 'muted' : 'neutral'} onClick={toggleMute}>{muted ? <MicOff size={17}/> : <Mic size={17}/>} {muted ? 'Unmute' : 'Mute'}</button>
-            <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> End call</button>
+            {activeCall.media_type === 'video' && <button type="button" className={cameraOff ? 'muted' : 'neutral'} onClick={toggleCamera}>{cameraOff ? <CameraOff size={17}/> : <Camera size={17}/>} {cameraOff ? 'Camera on' : 'Camera off'}</button>}
+             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call ended.')}><PhoneOff size={17}/> End call</button>
           </div> : <div className="master-chat-call-actions">
             <button type="button" className="decline" onClick={() => void finishCall('ended', 'Call cancelled.')}><PhoneOff size={17}/> Cancel call</button>
           </div>}
-        <small className="master-chat-call-footer"><AlertTriangle size={13}/> Use calls only with people you trust. Incoming voice is never auto-answered.</small>
+        <small className="master-chat-call-footer"><AlertTriangle size={13}/> Calls are never auto-answered. Only accept calls from people you recognize.</small>
       </section>
     </div>, portalRoot ?? document.body)}
     {quietIncoming && <span className="master-chat-visually-hidden">Incoming call is muted.</span>}
