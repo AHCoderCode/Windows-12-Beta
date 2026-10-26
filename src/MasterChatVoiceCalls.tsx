@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { AlertTriangle, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Camera, CameraOff, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, Video, X } from 'lucide-react';
 import { setSafeRemoteAudioVolume, VOICE_MICROPHONE_CONSTRAINTS } from './voiceAudio';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
@@ -12,6 +12,7 @@ type CallRow = {
   status: 'ringing' | 'accepted' | 'rejected' | 'ended';
   created_at: string;
   updated_at: string;
+  media_type: 'audio' | 'video';
 };
 type CallSignal = {
   id: string;
@@ -50,6 +51,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
   const [callState, setCallState] = useState<CallState>('idle');
   const [notice, setNotice] = useState('');
   const [muted, setMuted] = useState(false);
+  const [cameraOff, setCameraOff] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [connectedAt, setConnectedAt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,6 +59,9 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const activeCallRef = useRef<CallView | null>(null);
   const peopleRef = useRef(people);
   peopleRef.current = people;
@@ -86,6 +91,9 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
     }
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    remoteStreamRef.current = null;
     const oldCallId = activeCallRef.current?.id;
     if (oldCallId) pendingSignalsRef.current.delete(oldCallId);
     pendingCandidatesRef.current = [];
@@ -93,6 +101,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     setCall(null);
     setCallState('idle');
     setMuted(false);
+    setCameraOff(false);
     setConnectedAt(null);
     setElapsedSeconds(0);
     setBusy(false);
@@ -203,7 +212,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         const local = pc.localDescription;
-        if (!local?.sdp || !activeCallRef.current) throw new Error('Could not create an audio answer.');
+        if (!local?.sdp || !activeCallRef.current) throw new Error('Could not create a call answer.');
         await sendSignal(current, 'answer', { type: 'answer', sdp: local.sdp });
         setCallState('connecting');
       } else if (signal.kind === 'answer') {
@@ -242,9 +251,15 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       });
     };
     pc.ontrack = event => {
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      remoteStreamRef.current = stream;
       const audio = remoteAudioRef.current;
+      if (audio) audio.srcObject = stream;
+      if (call.media_type === 'video' && remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
+        void remoteVideoRef.current.play().catch(() => setNotice('Tap the remote video to start playback.'));
+      }
       if (!audio) return;
-      audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
       // Keep incoming audio at a conservative level on mobile speakers and other high-gain devices.
       setSafeRemoteAudioVolume(audio);
       void audio.play().catch(() => setNotice('Tap the audio control to allow call playback.'));
@@ -254,7 +269,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       if (pc.connectionState === 'connected') {
         setCallState('connected');
         setConnectedAt(Date.now());
-        setNotice('Voice connected using a relay-only route.');
+        setNotice((call.media_type === 'video' ? 'Video' : 'Voice') + ' connected using a relay-only route.');
         if (callExpiryTimerRef.current !== null) window.clearTimeout(callExpiryTimerRef.current);
         callExpiryTimerRef.current = window.setTimeout(() => {
           void finishCall('ended', 'The private relay session reached its time limit. Start a new call if needed.');
@@ -312,7 +327,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     }
   }, [applySignal, client, profile]);
 
-  const startCall = useCallback(async (recipient: ChatProfile) => {
+  const startCall = useCallback(async (recipient: ChatProfile, mediaType: 'audio' | 'video') => {
     if (!enabled || !client || !recipient || recipient.id === profile.id || !profile || activeCallRef.current || busy) return;
     setRecipientPickerOpen(false);
     setNotice('');
@@ -321,16 +336,16 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     let createdCallId: string | null = null;
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
-        throw new Error('This browser does not support secure audio calling. Use an up-to-date browser over HTTPS.');
+        throw new Error('This browser does not support secure calls. Use an up-to-date browser over HTTPS.');
       }
       const local = await navigator.mediaDevices.getUserMedia({
         audio: VOICE_MICROPHONE_CONSTRAINTS,
-        video: false,
+        video: mediaType === 'video' ? { facingMode: 'user', width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } } : false,
       });
       localStreamRef.current = local;
       const { data, error } = await client.from('aeroshell_calls')
-        .insert({ caller_id: profile.id, callee_id: recipient.id })
-        .select('id, caller_id, callee_id, status, created_at, updated_at').single();
+        .insert({ caller_id: profile.id, callee_id: recipient.id, media_type: mediaType })
+        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type').single();
       if (error || !data) throw new Error(error?.message ?? 'Could not start the call.');
       createdCallId = data.id;
       const call: CallView = { ...data as CallRow, direction: 'outgoing', peer: recipient };
@@ -346,10 +361,10 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       local.getTracks().forEach(track => pc.addTrack(track, local));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      if (!pc.localDescription?.sdp) throw new Error('Could not create the audio offer.');
+      if (!pc.localDescription?.sdp) throw new Error('Could not create the call offer.');
       await sendSignal(call, 'offer', { type: 'offer', sdp: pc.localDescription.sdp });
       setCallState('outgoing');
-      setNotice('Calling ' + recipient.username + ' through the private relay. Camera access is never requested.');
+      setNotice((mediaType === 'video' ? 'Video calling ' : 'Calling ') + recipient.username + ' through the private relay.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Voice call could not start.';
       if (createdCallId) {
@@ -381,7 +396,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       }
       const local = await navigator.mediaDevices.getUserMedia({
         audio: VOICE_MICROPHONE_CONSTRAINTS,
-        video: false,
+        video: current.media_type === 'video' ? { facingMode: 'user', width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 } } : false,
       });
       localStreamRef.current = local;
       const servers = await turnServersForCall(current.id);
@@ -389,7 +404,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       local.getTracks().forEach(track => pc.addTrack(track, local));
       const { data, error } = await client.from('aeroshell_calls')
         .update({ status: 'accepted' }).eq('id', current.id).eq('status', 'ringing')
-        .select('id, caller_id, callee_id, status, created_at, updated_at').maybeSingle();
+        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type').maybeSingle();
       if (error || !data) throw new Error('This call is no longer available or could not be accepted.');
       setCall({ ...current, ...data as CallRow, direction: 'incoming', peer: current.peer });
       // Only transition to the in-call controls after the server confirms acceptance.
@@ -419,6 +434,12 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       setNotice('Incoming call declined.');
     }
   }, [client, cleanupLocal]);
+
+  const toggleCamera = useCallback(() => {
+    const next = !cameraOff;
+    localStreamRef.current?.getVideoTracks().forEach(track => { track.enabled = !next; });
+    setCameraOff(next);
+  }, [cameraOff]);
 
   const toggleMute = useCallback(() => {
     const next = !muted;
@@ -485,7 +506,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         if (signal.kind === 'offer') {
           void (async () => {
             const { data, error } = await client.from('aeroshell_calls')
-              .select('id, caller_id, callee_id, status, created_at, updated_at')
+              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type')
               .eq('id', signal.call_id).eq('callee_id', profile.id).eq('status', 'ringing').maybeSingle();
             if (!active || error || !data) return;
             await receiveCall(data as CallRow);
@@ -516,6 +537,18 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       // Do not hang up active calls merely because a Realtime dependency refreshes.
     };
   }, [enabled, client, profile, cleanupLocal, queueOrApplySignal, setCall]);
+
+  useEffect(() => {
+    if (!activeCall || activeCall.media_type !== 'video') return;
+    if (localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+      void localVideoRef.current.play().catch(() => setNotice('Tap your camera preview to start playback.'));
+    }
+    if (remoteVideoRef.current && remoteStreamRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      void remoteVideoRef.current.play().catch(() => setNotice('Tap the remote video to start playback.'));
+    }
+  }, [activeCall?.id, activeCall?.media_type]);
 
   useEffect(() => {
     if (enabled) return;
