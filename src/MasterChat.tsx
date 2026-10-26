@@ -681,16 +681,28 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const loadPeople = useCallback(async (userId: string) => {
     if (!supabaseClient) return;
-    const { data: relations, error: relationsError } = await supabaseClient
-      .from('aeroshell_friend_requests').select('requester_id, recipient_id')
-      .or('requester_id.eq.' + userId + ',recipient_id.eq.' + userId)
-      .order('created_at', { ascending: false }).limit(500);
-    if (relationsError) {
-      tell('Your friends and requests could not load. Please refresh and try again.', 'error');
+    const [{ data: relations, error: relationsError }, { data: memberships, error: membershipError }] = await Promise.all([
+      supabaseClient.from('aeroshell_friend_requests').select('requester_id, recipient_id')
+        .or('requester_id.eq.' + userId + ',recipient_id.eq.' + userId)
+        .order('created_at', { ascending: false }).limit(500),
+      supabaseClient.from('aeroshell_group_members').select('group_id').eq('user_id', userId),
+    ]);
+    if (relationsError || membershipError) {
+      tell('Your friends, requests, or group contacts could not load. Please refresh and try again.', 'error');
       return;
     }
-    const relatedIds = Array.from(new Set((relations ?? []).flatMap(row => [row.requester_id, row.recipient_id])))
-      .filter(id => id !== userId);
+    const groupIds = Array.from(new Set((memberships ?? []).map(row => row.group_id)));
+    const { data: groupMembers, error: groupMembersError } = groupIds.length
+      ? await supabaseClient.from('aeroshell_group_members').select('user_id').in('group_id', groupIds)
+      : { data: [], error: null };
+    if (groupMembersError) {
+      tell('Your group contacts could not load. Please refresh and try again.', 'error');
+      return;
+    }
+    const relatedIds = Array.from(new Set([
+      ...(relations ?? []).flatMap(row => [row.requester_id, row.recipient_id]),
+      ...(groupMembers ?? []).map(row => row.user_id),
+    ])).filter(id => id !== userId);
     if (!relatedIds.length) {
       setPeople([]);
       return;
