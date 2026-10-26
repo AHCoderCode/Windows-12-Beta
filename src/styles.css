@@ -2961,3 +2961,352 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .master-chat-friend-request-popup{padding:26px 16px 18px!important}
   .master-chat-friend-request-popup-actions{gap:7px!important}
 }
+
+/* Friend Requests is a separate, tappable sidebar bar. Its list is intentionally collapsed until opened. */
+.master-chat-friend-request-bar{
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  width:calc(100% - 20px)!important;
+  min-width:0!important;
+  min-height:56px!important;
+  margin:3px 10px 8px!important;
+  padding:8px 10px!important;
+  border:1px solid var(--border)!important;
+  border-radius:12px!important;
+  background:var(--surface)!important;
+  color:var(--text)!important;
+  text-align:left!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
+}
+.master-chat-friend-request-bar:hover,
+.master-chat-friend-request-bar.open{
+  border-color:color-mix(in srgb,var(--accent) 48%,var(--border))!important;
+  background:color-mix(in srgb,var(--accent) 7%,var(--surface))!important;
+}
+.master-chat-friend-request-bar-icon{
+  display:grid!important;
+  place-items:center!important;
+  flex:0 0 34px!important;
+  width:34px!important;
+  height:34px!important;
+  border-radius:10px!important;
+  background:color-mix(in srgb,var(--accent) 15%,var(--surface))!important;
+  color:var(--accent)!important;
+}
+.master-chat-friend-request-bar-label{
+  display:flex!important;
+  flex:1 1 auto!important;
+  flex-direction:column!important;
+  gap:3px!important;
+  min-width:0!important;
+}
+.master-chat-friend-request-bar-label b{
+  color:var(--text)!important;
+  font-size:11px!important;
+  font-weight:850!important;
+  line-height:1.25!important;
+}
+.master-chat-friend-request-bar-label small{
+  overflow:hidden!important;
+  color:var(--muted)!important;
+  font-size:9px!important;
+  line-height:1.35!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.master-chat-friend-request-count{
+  display:grid!important;
+  flex:0 0 24px!important;
+  place-items:center!important;
+  min-width:24px!important;
+  height:24px!important;
+  padding:0 6px!important;
+  border:1px solid var(--border)!important;
+  border-radius:9px!important;
+  background:var(--soft)!important;
+  color:var(--muted)!important;
+  font-size:10px!important;
+  font-weight:850!important;
+  font-variant-numeric:tabular-nums!important;
+}
+.master-chat-friend-request-count.has-requests{
+  border-color:#8b7cf6!important;
+  background:#7867e8!important;
+  color:#fff!important;
+}
+.master-chat-friend-request-chevron{
+  flex:0 0 16px!important;
+  color:var(--muted)!important;
+  transition:transform .16s ease!important;
+}
+.master-chat-friend-request-bar.open .master-chat-friend-request-chevron{transform:rotate(90deg)!important}
+.master-chat-friend-requests{
+  margin-top:0!important;
+  margin-bottom:8px!important;
+}
+
+/* Rebuild the video call as a responsive full-screen stage with a tappable bottom-right mini-preview. */
+.master-chat-call-overlay:has(.master-chat-call-card.video-call){
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483645!important;
+  display:block!important;
+  overflow:hidden!important;
+  padding:0!important;
+  background:#05070d!important;
+  -webkit-backdrop-filter:none!important;
+  backdrop-filter:none!important;
+}
+.master-chat-call-card.video-call{
+  position:fixed!important;
+  inset:0!important;
+  display:block!important;
+  width:100vw!important;
+  width:100dvw!important;
+  height:100vh!important;
+  height:100dvh!important;
+  max-width:none!important;
+  max-height:none!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+  border:0!important;
+  border-radius:0!important;
+  background:#05070d!important;
+  color:#f7f8fc!important;
+  text-align:left!important;
+  box-shadow:none!important;
+}
+.master-chat-call-card.video-call .master-chat-call-close{
+  position:absolute!important;
+  top:calc(env(safe-area-inset-top,0px) + 12px)!important;
+  right:calc(env(safe-area-inset-right,0px) + 12px)!important;
+  z-index:15!important;
+  width:40px!important;
+  height:40px!important;
+  border:1px solid #ffffff2e!important;
+  border-radius:50%!important;
+  background:#111827b8!important;
+  color:#fff!important;
+}
+.master-chat-call-video-stage{
+  position:absolute!important;
+  inset:0!important;
+  z-index:1!important;
+  width:100%!important;
+  height:100%!important;
+  min-width:0!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  background:#05070d!important;
+}
+.master-chat-call-video-stage>video{
+  display:block!important;
+  object-fit:cover!important;
+  outline:none!important;
+  -webkit-tap-highlight-color:transparent!important;
+}
+.master-chat-call-video-main{
+  position:absolute!important;
+  inset:0!important;
+  z-index:1!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  border:0!important;
+  border-radius:0!important;
+  background:#090c12!important;
+  cursor:pointer!important;
+}
+.master-chat-call-video-main.self-view{transform:scaleX(-1)!important}
+.master-chat-call-video-thumb{
+  position:absolute!important;
+  z-index:4!important;
+  right:calc(env(safe-area-inset-right,0px) + 16px)!important;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 108px)!important;
+  width:clamp(86px,20vw,162px)!important;
+  height:clamp(120px,25vh,220px)!important;
+  max-width:34vw!important;
+  max-height:28vh!important;
+  object-fit:cover!important;
+  border:2px solid #ffffffd9!important;
+  border-radius:15px!important;
+  background:#171a22!important;
+  box-shadow:0 8px 28px #0009!important;
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+}
+.master-chat-call-video-thumb.self-view{transform:scaleX(-1)!important}
+.master-chat-video-status{
+  position:absolute!important;
+  left:50%!important;
+  top:50%!important;
+  z-index:5!important;
+  width:max-content!important;
+  max-width:calc(100% - 36px)!important;
+  padding:10px 15px!important;
+  border:1px solid #ffffff27!important;
+  border-radius:13px!important;
+  background:#101522c9!important;
+  color:#fff!important;
+  font-size:12px!important;
+  font-weight:750!important;
+  line-height:1.4!important;
+  text-align:center!important;
+  transform:translate(-50%,-50%)!important;
+  pointer-events:none!important;
+}
+.master-chat-video-call-header{
+  position:absolute!important;
+  top:calc(env(safe-area-inset-top,0px) + 12px)!important;
+  left:calc(env(safe-area-inset-left,0px) + 12px)!important;
+  z-index:8!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  width:max-content!important;
+  max-width:calc(100% - 112px)!important;
+  min-width:0!important;
+  padding:8px 12px 8px 8px!important;
+  border:1px solid #ffffff25!important;
+  border-radius:16px!important;
+  background:#101522b8!important;
+  color:#fff!important;
+  -webkit-backdrop-filter:blur(16px)!important;
+  backdrop-filter:blur(16px)!important;
+  box-shadow:0 5px 25px #0003!important;
+}
+.master-chat-video-call-avatar{
+  display:grid!important;
+  place-items:center!important;
+  flex:0 0 38px!important;
+  width:38px!important;
+  height:38px!important;
+  overflow:hidden!important;
+  border:1px solid #ffffff4a!important;
+  border-radius:50%!important;
+  background:linear-gradient(145deg,#6c78b7,#29365c)!important;
+  color:#fff!important;
+  font-size:14px!important;
+  font-weight:850!important;
+}
+.master-chat-video-call-avatar img{display:block!important;width:100%!important;height:100%!important;object-fit:cover!important}
+.master-chat-video-call-person{
+  display:flex!important;
+  flex:1 1 auto!important;
+  flex-direction:column!important;
+  gap:4px!important;
+  min-width:0!important;
+}
+.master-chat-video-call-person b{
+  overflow:hidden!important;
+  color:#fff!important;
+  font-size:13px!important;
+  font-weight:850!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.master-chat-video-call-person small{color:#d0d6e3!important;font-size:10px!important;font-variant-numeric:tabular-nums!important}
+.master-chat-video-call-protected{
+  display:flex!important;
+  align-items:center!important;
+  gap:4px!important;
+  flex:0 0 auto!important;
+  color:#a6e8cb!important;
+  font-size:9px!important;
+  font-weight:750!important;
+}
+.master-chat-call-card.video-call>.eyebrow,
+.master-chat-call-card.video-call>h3,
+.master-chat-call-card.video-call>.master-chat-call-state,
+.master-chat-call-card.video-call>.master-chat-call-privacy,
+.master-chat-call-card.video-call>.master-chat-call-footer{
+  display:none!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls{
+  position:absolute!important;
+  left:50%!important;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 20px)!important;
+  z-index:10!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:11px!important;
+  width:max-content!important;
+  max-width:calc(100% - 26px)!important;
+  margin:0!important;
+  padding:8px!important;
+  border:1px solid #ffffff2d!important;
+  border-radius:24px!important;
+  background:#111827d9!important;
+  -webkit-backdrop-filter:blur(18px)!important;
+  backdrop-filter:blur(18px)!important;
+  box-shadow:0 12px 40px #0007!important;
+  transform:translateX(-50%)!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  flex:0 1 auto!important;
+  min-width:70px!important;
+  min-height:44px!important;
+  padding:0 14px!important;
+  border:1px solid #ffffff26!important;
+  border-radius:16px!important;
+  background:#303a4b!important;
+  color:#fff!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.decline{
+  min-width:92px!important;
+  background:#d73349!important;
+  border-color:#ff7a8b!important;
+  color:#fff!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.accept{
+  min-width:92px!important;
+  background:#16875b!important;
+  border-color:#56c99b!important;
+  color:#fff!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.muted{
+  background:#e6b44e!important;
+  color:#222!important;
+}
+.master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button:focus-visible,
+.master-chat-call-card.video-call .master-chat-call-close:focus-visible,
+.master-chat-call-video-stage>video:focus-visible{
+  outline:2px solid #a79bff!important;
+  outline-offset:3px!important;
+}
+@media(max-width:560px){
+  .master-chat-friend-request-bar{width:calc(100% - 14px)!important;margin-right:7px!important;margin-left:7px!important;min-height:54px!important}
+  .master-chat-call-video-thumb{
+    right:calc(env(safe-area-inset-right,0px) + 12px)!important;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 105px)!important;
+    width:clamp(86px,27vw,124px)!important;
+    height:clamp(112px,19vh,156px)!important;
+    max-width:34vw!important;
+    max-height:23vh!important;
+    border-radius:13px!important;
+  }
+  .master-chat-video-call-header{max-width:calc(100% - 88px)!important;gap:8px!important;padding:7px 10px 7px 7px!important}
+  .master-chat-video-call-avatar{width:33px!important;height:33px!important;flex-basis:33px!important}
+  .master-chat-video-call-person b{font-size:12px!important}
+  .master-chat-video-call-protected{display:none!important}
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls{bottom:calc(env(safe-area-inset-bottom,0px) + 12px)!important;gap:6px!important;padding:6px!important;max-width:calc(100% - 18px)!important}
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button{min-width:0!important;min-height:42px!important;padding:0 10px!important;gap:5px!important;font-size:10px!important}
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.decline,
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.accept{min-width:72px!important}
+}
+@media(max-width:360px){
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button span{display:none!important}
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button{min-width:42px!important;width:46px!important;padding:0!important}
+  .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.decline{width:54px!important}
+}
