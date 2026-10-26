@@ -2567,3 +2567,10 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-active-call-actions.portal{position:fixed!important;top:calc(env(safe-area-inset-top,0px) + 8px)!important;right:calc(env(safe-area-inset-right,0px) + 10px)!important;bottom:auto!important;left:auto!important}
 @media(max-width:560px){.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-conversation-header{padding-right:144px!important}.master-chat-active-call-actions{gap:4px!important}.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-active-call-actions .master-chat-voice-call-button,.master-chat-active-call-actions.portal .master-chat-voice-call-button{padding:0 7px!important;font-size:9px!important}}
 
+
+
+/* Make messaging actions easier to scan on desktop and touch screens. */
+.master-chat-search-hint{margin:0;padding:2px 13px 8px;color:var(--muted);font-size:10px;line-height:1.5}
+.master-chat-composer-tools-label{flex:0 0 100%;display:block;padding:2px 2px 0;color:var(--muted);font-size:9px;font-weight:850;letter-spacing:.09em;line-height:1.4}
+.master-chat-composer-tools .master-chat-composer-tool{min-height:36px}
+.master-chat-composer-tools .master-chat-composer-tool:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
