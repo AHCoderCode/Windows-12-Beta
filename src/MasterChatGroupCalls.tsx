@@ -75,6 +75,7 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const turnServersRef = useRef<Map<string, RTCIceServer[]>>(new Map());
+  const turnServerRequestsRef = useRef<Map<string, Promise<RTCIceServer[]>>>(new Map());
   const sessionStartRef = useRef<number | null>(null);
 
   participantProfilesRef.current = participants;
@@ -89,28 +90,42 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
   const getRelayServers = useCallback(async (sessionId: string): Promise<RTCIceServer[]> => {
     const cached = turnServersRef.current.get(sessionId);
     if (cached?.length) return cached;
-    if (!client) throw new Error('The group calling service is unavailable.');
-    const { data: leg, error: legError } = await client.from('aeroshell_calls')
-      .select('id')
-      .eq('group_call_id', sessionId)
-      .eq('status', 'accepted')
-      .or('caller_id.eq.' + profile.id + ',callee_id.eq.' + profile.id)
-      .limit(1)
-      .maybeSingle();
-    if (legError || !leg) throw new Error('Waiting for an accepted group member before opening the private relay.');
-    const { data, error } = await client.functions.invoke('master-chat-turn-credentials', { body: { callId: leg.id } });
-    if (error) throw new Error('The private relay is unavailable. Verify the Metered TURN server settings and retry the group call.');
-    const raw = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
-    const servers: RTCIceServer[] = raw.flatMap(server => {
-      const urls = (Array.isArray(server.urls) ? server.urls : [server.urls]).filter((url): url is string =>
-        typeof url === 'string' && /^turns?:[a-z0-9.-]+\.relay\.metered\.ca:\d+(?:\?transport=(?:tcp|udp))?$/i.test(url.trim()));
-      if (!urls.length || typeof server.username !== 'string' || !server.username.trim() ||
-        typeof server.credential !== 'string' || !server.credential.trim()) return [];
-      return [{ urls: urls.length === 1 ? urls[0] : urls, username: server.username, credential: server.credential }];
-    });
-    if (!servers.length) throw new Error('The private relay returned no usable TURN credentials. No direct connection will be attempted.');
-    turnServersRef.current.set(sessionId, servers);
-    return servers;
+    const pending = turnServerRequestsRef.current.get(sessionId);
+    if (pending) return pending;
+
+    const request = (async (): Promise<RTCIceServer[]> => {
+      if (!client) throw new Error('The group calling service is unavailable.');
+      const { data: leg, error: legError } = await client.from('aeroshell_calls')
+        .select('id')
+        .eq('group_call_id', sessionId)
+        .eq('status', 'accepted')
+        .or('caller_id.eq.' + profile.id + ',callee_id.eq.' + profile.id)
+        .limit(1)
+        .maybeSingle();
+      if (legError || !leg) throw new Error('Waiting for an accepted group member before opening the private relay.');
+      const { data, error } = await client.functions.invoke('master-chat-turn-credentials', { body: { callId: leg.id } });
+      if (error) throw new Error('The private relay is unavailable. Verify the Metered TURN server settings and retry the group call.');
+      const raw = Array.isArray(data?.iceServers) ? data.iceServers as RTCIceServer[] : [];
+      const servers: RTCIceServer[] = raw.flatMap(server => {
+        const urls = (Array.isArray(server.urls) ? server.urls : [server.urls]).filter((url): url is string =>
+          typeof url === 'string' && /^turns?:[a-z0-9.-]+\\.relay\\.metered\\.ca:\\d+(?:\\?transport=(?:tcp|udp))?$/i.test(url.trim()));
+        if (!urls.length || typeof server.username !== 'string' || !server.username.trim() ||
+          typeof server.credential !== 'string' || !server.credential.trim()) return [];
+        return [{ urls: urls.length === 1 ? urls[0] : urls, username: server.username, credential: server.credential }];
+      });
+      if (!servers.length) throw new Error('The private relay returned no usable TURN credentials. No direct connection will be attempted.');
+      turnServersRef.current.set(sessionId, servers);
+      return servers;
+    })();
+
+    turnServerRequestsRef.current.set(sessionId, request);
+    try {
+      return await request;
+    } finally {
+      if (turnServerRequestsRef.current.get(sessionId) === request) {
+        turnServerRequestsRef.current.delete(sessionId);
+      }
+    }
   }, [client, profile.id]);
 
   const sendSignal = useCallback(async (sessionId: string, peerId: string, kind: GroupSignal['kind'], payload: Record<string, unknown>) => {
@@ -334,6 +349,7 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
     processingSignalsRef.current.clear();
     processedSignalsRef.current.clear();
     turnServersRef.current.clear();
+    turnServerRequestsRef.current.clear();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     localStreamRef.current = null;
     setLocalStream(null);
