@@ -574,6 +574,21 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     if (current) void finishCall('ended', 'The call ended because Master Chat was locked.');
   }, [enabled, finishCall]);
 
+  // Refresh accepted direct-call rows so a browser tab that is still in a call
+  // is never mistaken for an abandoned call by the database recovery guard.
+  useEffect(() => {
+    if (!client || !activeCall || activeCall.status !== 'accepted') return;
+    let cancelled = false;
+    const heartbeat = async () => {
+      const { error } = await client.from('aeroshell_calls').update({ status: 'accepted' })
+        .eq('id', activeCall.id).eq('status', 'accepted');
+      if (error && !cancelled) console.warn('Direct-call heartbeat failed:', error.message);
+    };
+    void heartbeat();
+    const timer = window.setInterval(() => { void heartbeat(); }, 25_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [client, activeCall?.id, activeCall?.status]);
+
   useEffect(() => {
     if (!showCallLauncher) setRecipientPickerOpen(false);
   }, [showCallLauncher]);
