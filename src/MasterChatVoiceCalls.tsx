@@ -615,8 +615,8 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
             {people.filter(person => person.id !== profile.id).map(person => <div className="master-chat-recipient-row" key={person.id}>
               <span className="master-chat-recipient-avatar">{person.avatar_data ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
               <span className="master-chat-recipient-label"><b>{person.username}</b><small>Choose a call type</small></span>
-              <button type="button" className="master-chat-call-type-button" title={'Voice call '+person.username} aria-label={'Voice call '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'audio')}><PhoneCall size={17}/></button>
-              <button type="button" className="master-chat-call-type-button video" title={'Video call '+person.username} aria-label={'Video call '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'video')}><Video size={17}/></button>
+              <button type="button" className="master-chat-call-type-button" title={'Start voice call with '+person.username} aria-label={'Start voice call with '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'audio')}><PhoneCall size={17}/><span>Voice</span></button>
+              <button type="button" className="master-chat-call-type-button video" title={'Start video call with '+person.username} aria-label={'Start video call with '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'video')}><Video size={17}/><span>Video</span></button>
             </div>)}
             {!people.some(person => person.id !== profile.id) && <div className="master-chat-recipient-empty"><b>No friends to call yet</b><span>Search a username and become friends first.</span></div>}
           </div>
