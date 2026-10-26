@@ -610,7 +610,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
         <section className="master-chat-recipient-picker" role="dialog" aria-modal="true" aria-label="Choose a person to call">
           <header><span><PhoneCall size={19}/><b>Who would you like to call?</b></span><button type="button" aria-label="Close call picker" onClick={() => setRecipientPickerOpen(false)}><X size={18}/></button></header>
-          <p>Select a Master Chat member. The other person must accept before audio can connect.</p>
+          <p>Select one of your friends. They must accept the incoming voice or video call before you connect.</p>
           <div className="master-chat-recipient-picker-list">
             {people.filter(person => person.id !== profile.id).map(person => <div className="master-chat-recipient-row" key={person.id}>
               <span className="master-chat-recipient-avatar">{person.avatar_data ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
