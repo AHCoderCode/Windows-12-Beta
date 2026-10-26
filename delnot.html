@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#dce8ec" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Concrete Velocity" />
+    <link rel="manifest" href="/delnot/manifest.webmanifest" />
+    <link rel="icon" href="/delnot/icon.svg" type="image/svg+xml" />
+    <meta name="description" content="Concrete Velocity — one calm, continuous 18-kilometre first-person parkour course with checkpoints and wall-jumping." />
+    <title>CONCRETE VELOCITY — The Long Line</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas" aria-label="Concrete Velocity 3D game world"></canvas>
+      <div id="screen-vignette" aria-hidden="true"></div>
+      <div class="top-brand" aria-hidden="true"><span>CV / 001</span><span>CONCRETE VELOCITY</span><span>FIELD TEST — 26.10</span></div>
+      <main id="main-menu" class="menu-screen">
+        <section class="hero-panel">
+          <div class="eyebrow"><span class="status-dot"></span> ONE CONTINUOUS COURSE / 18 KM</div>
+          <h1>CONCRETE<br /><span>VELOCITY</span></h1>
+          <p class="hero-copy">One long first-person run.<br />Calm daylight. Clean movement. Harder as you go.</p>
+          <div class="hero-meta"><span>FIRST-PERSON TRAVERSAL</span><span>ONE COURSE / NO LEVELS</span></div>
+          <div class="menu-actions">
+            <button id="start-button" class="button button-primary"><span>START RUN</span><span aria-hidden="true">↗</span></button>
+          </div>
+          <div class="menu-utility">
+            <button id="settings-button" class="text-button">SETTINGS</button>
+            <button id="controls-button" class="text-button">CONTROLS</button>
+            <button id="credits-button" class="text-button">CREDITS</button>
+            <button id="install-button" class="text-button">INSTALL APP</button>
+          </div>
+          <p id="touch-note" class="touch-note" hidden>Touch controls are available during runs. Landscape mode is recommended.</p>
+        </section>
+        <aside class="course-panel">
+          <div class="panel-heading"><span>THE CONTINUOUS ROUTE</span><span class="panel-count">01 / 01</span></div>
+          <div id="course-list" class="course-list"></div>
+          <div class="course-footer"><span>CHECKPOINTS ENABLED</span><span>DIFFICULTY BUILDS OVER DISTANCE</span></div>
+        </aside>
+        <div class="menu-footer"><span>BUILT FOR MOMENTUM</span><span>WASD <i>+</i> MOUSE</span><span>DESKTOP + MOBILE</span></div>
+      </main>
+
+      <section id="hud" class="hud" hidden aria-live="off">
+        <div class="hud-topline">
+          <div class="hud-module hud-time"><span class="hud-label">CURRENT RUN</span><strong id="hud-timer">00:00.00</strong><span id="hud-course" class="hud-sub">MOVEMENT LABORATORY</span></div>
+          <div class="hud-module hud-progress"><span class="hud-label">ROUTE PROGRESS</span><strong id="hud-progress">00<span>%</span></strong><div class="progress-track"><span id="progress-fill"></span></div></div>
+          <div class="hud-module hud-checkpoint"><span class="hud-label">CHECKPOINT</span><strong id="hud-checkpoint">START / 00</strong><span id="hud-best" class="hud-sub">PB —:—</span></div>
+        </div>
+        <div id="crosshair" class="crosshair" aria-hidden="true"><span></span><span></span></div>
+        <div class="hud-bottomline">
+          <div class="movement-readout"><span class="readout-mark"></span><div><span class="hud-label">MOVEMENT STATE</span><strong id="hud-state">READY</strong></div></div>
+          <div class="hint-readout"><span class="hud-label">FIELD NOTE</span><strong id="hud-hint">Keep moving to start the clock.</strong></div>
+          <div class="speed-readout"><span class="hud-label">VELOCITY</span><strong id="hud-speed">0.0 <small>M/S</small></strong></div>
+        </div>
+        <div class="hud-side-note">ESC <span>PAUSE / RELEASE</span></div>
+        <div id="touch-controls" class="touch-controls" hidden aria-label="Touch gameplay controls">
+          <div id="touch-stick-zone" class="touch-stick-zone" aria-label="Movement joystick"><div class="touch-stick-ring"><div id="touch-stick-knob" class="touch-stick-knob"></div></div><span class="touch-control-caption">MOVE</span></div>
+          <div class="touch-actions"><div class="touch-action-row"><button id="touch-vault" class="touch-button touch-button-small" type="button">VAULT</button><button id="touch-slide" class="touch-button touch-button-small" type="button">SLIDE</button></div><div class="touch-action-row"><button id="touch-sprint" class="touch-button" type="button">RUN</button><button id="touch-jump" class="touch-button touch-button-jump" type="button">JUMP</button></div></div>
+          <div class="touch-utility"><button id="touch-reset" class="touch-utility-button" type="button">RESET</button><button id="touch-pause" class="touch-utility-button" type="button">PAUSE</button></div><div class="touch-look-note">DRAG RIGHT SIDE TO LOOK</div>
+        </div>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+      <section id="pause-overlay" class="modal-screen" hidden>
+        <div class="modal-card pause-card">
+          <div class="eyebrow"><span class="status-dot"></span> RUN INTERRUPTED</div>
+          <h2>TAKE A<br /><span>BREATH.</span></h2>
+          <p class="modal-copy">Momentum is on hold. Your run timer is paused.</p>
+          <div class="modal-actions">
+            <button id="resume-button" class="button button-primary"><span>RESUME RUN</span><span>↗</span></button>
+            <button id="restart-checkpoint-button" class="button button-secondary">RESTART CHECKPOINT</button>
+            <button id="restart-course-button" class="button button-secondary">RESTART ROUTE</button>
+            <button id="pause-settings-button" class="button button-quiet">SETTINGS</button>
+            <button id="return-menu-button" class="button button-quiet">RETURN TO MENU</button>
+          </div>
+          <div class="modal-foot">ESC OR PAUSE TO RESUME</div>
+        </div>
+      </section>
+
+      <section id="finish-overlay" class="modal-screen" hidden>
+        <div class="modal-card finish-card">
+          <div class="eyebrow"><span class="status-dot"></span> ROUTE COMPLETE</div>
+          <h2>LINE<br /><span>ACQUIRED.</span></h2>
+          <div class="result-time"><span>FINAL TIME</span><strong id="finish-time">00:00.00</strong></div>
+          <div class="result-grid"><div><span>MEDAL</span><strong id="finish-medal">BRONZE</strong></div><div><span>PERSONAL BEST</span><strong id="finish-best">—:—</strong></div><div><span>CHECKPOINTS</span><strong id="finish-checkpoints">0 / 0</strong></div><div><span>COLLECTED</span><strong id="finish-collectibles">0 / 0</strong></div></div>
+          <p id="finish-message" class="modal-copy">The course is complete.</p>
+          <div class="modal-actions"><button id="replay-button" class="button button-primary"><span>RUN IT AGAIN</span><span>↗</span></button><button id="finish-menu-button" class="button button-secondary">MAIN MENU</button></div>
+          <div class="modal-foot">PERSONAL RECORDS ARE STORED ON THIS DEVICE</div>
+        </div>
+      </section>
+
+      <section id="settings-overlay" class="modal-screen" hidden>
+        <div class="modal-card settings-card">
+          <div class="modal-top"><div><div class="eyebrow"><span class="status-dot"></span> SYSTEM CONFIGURATION</div><h2>FIELD<br /><span>SETTINGS.</span></h2></div><button id="close-settings-button" class="close-button" aria-label="Close settings">×</button></div>
+          <div id="settings-content" class="settings-content"></div>
+          <div class="modal-foot">SETTINGS SAVE AUTOMATICALLY ON THIS DEVICE</div>
+        </div>
+      </section>
+
+      <section id="info-overlay" class="modal-screen" hidden>
+        <div class="modal-card info-card"><div class="modal-top"><div><div class="eyebrow"><span class="status-dot"></span><span id="info-eyebrow">FIELD MANUAL</span></div><h2 id="info-title">MOVE WITH<br /><span>INTENT.</span></h2></div><button id="close-info-button" class="close-button" aria-label="Close information">×</button></div><div id="info-content" class="info-content"></div><div class="modal-foot">CONCRETE VELOCITY / FIELD TEST 001</div></div>
+      </section>
+
+      <section id="error-panel" class="error-panel" hidden role="alert"><div class="eyebrow">GRAPHICS INITIALIZATION FAILED</div><h2>THE WORLD<br />DIDN'T LOAD.</h2><p id="error-message">A browser-compatible WebGL 2 renderer could not be created. Try a desktop browser with hardware acceleration enabled.</p></section>
+    </div>
+    <script type="module" src="/delnot/src/main.ts"></script>
+  </body>
+</html>

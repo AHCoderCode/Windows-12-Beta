@@ -3780,3 +3780,29 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   }
   .master-chat-recipient-search{padding:11px 10px!important}
 }
+
+/* Delnot / Concrete Velocity runs inside the existing Games window. */
+.games-app-delnot{
+  display:flex!important;flex-direction:column!important;
+  width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;
+  overflow:hidden!important;box-sizing:border-box!important;padding:8px 10px 10px!important;
+}
+.games-app-delnot .game-tabs{
+  flex:0 0 auto!important;min-width:0!important;overflow-x:auto!important;overflow-y:hidden!important;
+  flex-wrap:nowrap!important;padding:0 0 8px!important;margin:0!important;
+}
+.games-app-delnot .game-tabs button{flex:0 0 auto!important;white-space:nowrap!important}
+.delnot-game-panel{
+  position:relative!important;display:flex!important;flex:1 1 auto!important;width:100%!important;
+  min-width:0!important;min-height:0!important;margin:8px 0 0!important;overflow:hidden!important;
+  border:1px solid var(--border)!important;border-radius:10px!important;background:#dce8ec!important;
+}
+.delnot-game-frame{
+  display:block!important;flex:1 1 auto!important;width:100%!important;height:100%!important;
+  min-width:0!important;min-height:0!important;border:0!important;margin:0!important;background:#dce8ec!important;
+}
+.ios-app-window .games-app-delnot{padding:8px 10px 10px!important}
+@media(max-width:560px){
+  .games-app-delnot{padding:6px!important}
+  .delnot-game-panel{margin-top:6px!important;border-radius:8px!important}
+}

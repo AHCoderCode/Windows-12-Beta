@@ -1,0 +1,19 @@
+{
+  "name": "Concrete Velocity — Delnot",
+  "short_name": "Delnot",
+  "description": "A first-person browser parkour time trial with one continuous course, checkpoints, settings, audio, and mobile controls.",
+  "start_url": "/delnot.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#dce8ec",
+  "theme_color": "#dce8ec",
+  "icons": [
+    {
+      "src": "/delnot/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
