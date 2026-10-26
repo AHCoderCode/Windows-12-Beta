@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { AlertTriangle, Camera, CameraOff, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, ShieldCheck, Video, X } from 'lucide-react';
+import { AlertTriangle, Camera, CameraOff, LoaderCircle, Mic, MicOff, PhoneCall, PhoneIncoming, PhoneOff, Search, ShieldCheck, Video, X } from 'lucide-react';
 import { setSafeRemoteAudioVolume, VOICE_MICROPHONE_CONSTRAINTS } from './voiceAudio';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
@@ -13,6 +13,7 @@ type CallRow = {
   created_at: string;
   updated_at: string;
   media_type: 'audio' | 'video';
+  group_call_id?: string | null;
 };
 type CallSignal = {
   id: string;
@@ -48,6 +49,7 @@ function durationLabel(seconds: number) {
 export function MasterChatVoiceCalls({ client, profile, people, activePerson, enabled, showCallLauncher = true, portalRoot }: Props) {
   const [activeCall, setActiveCall] = useState<CallView | null>(null);
   const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [callState, setCallState] = useState<CallState>('idle');
   const [notice, setNotice] = useState('');
   const [muted, setMuted] = useState(false);
@@ -361,7 +363,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       localStreamRef.current = local;
       const { data, error } = await client.from('aeroshell_calls')
         .insert({ caller_id: profile.id, callee_id: recipient.id, media_type: mediaType })
-        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type').single();
+        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type, group_call_id').single();
       if (error || !data) throw new Error(error?.message ?? 'Could not start the call.');
       createdCallId = data.id;
       const call: CallView = { ...data as CallRow, direction: 'outgoing', peer: recipient };
@@ -420,7 +422,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       local.getTracks().forEach(track => pc.addTrack(track, local));
       const { data, error } = await client.from('aeroshell_calls')
         .update({ status: 'accepted' }).eq('id', current.id).eq('status', 'ringing')
-        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type').maybeSingle();
+        .select('id, caller_id, callee_id, status, created_at, updated_at, media_type, group_call_id').maybeSingle();
       if (error || !data) throw new Error('This call is no longer available or could not be accepted.');
       setCall({ ...current, ...data as CallRow, direction: 'incoming', peer: current.peer });
       // Only transition to the in-call controls after the server confirms acceptance.
@@ -480,7 +482,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       }
     };
     const receiveCall = async (row: CallRow) => {
-      if (!active || row.callee_id !== profile.id || row.status !== 'ringing') return;
+      if (!active || row.group_call_id || row.callee_id !== profile.id || row.status !== 'ringing') return;
       const ageMs = Date.now() - new Date(row.created_at).getTime();
       if (!Number.isFinite(ageMs) || ageMs > 45000) {
         await client.from('aeroshell_calls').update({ status: 'rejected' }).eq('id', row.id).eq('status', 'ringing');
@@ -522,7 +524,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         if (signal.kind === 'offer') {
           void (async () => {
             const { data, error } = await client.from('aeroshell_calls')
-              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type')
+              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type, group_call_id')
               .eq('id', signal.call_id).eq('callee_id', profile.id).eq('status', 'ringing').maybeSingle();
             if (!active || error || !data) return;
             await receiveCall(data as CallRow);
@@ -533,7 +535,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         if (status === 'SUBSCRIBED') {
           void (async () => {
             const { data } = await client.from('aeroshell_calls')
-              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type')
+              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type, group_call_id')
               .eq('callee_id', profile.id).eq('status', 'ringing')
               .order('created_at', { ascending: false }).limit(5);
             if (!active || !data?.length) return;
@@ -589,52 +591,35 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
 
   return <>
     <audio ref={remoteAudioRef} autoPlay playsInline aria-label="Remote voice call audio" className="master-chat-remote-audio"/>
-    {showCallLauncher && callState === 'idle' && (activePerson
-      ? (portalRoot
-        ? createPortal(<div className={"master-chat-active-call-actions" + (portalRoot ? " portal" : "")}>
-            <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
-              disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
-              <PhoneCall size={16}/><span>Call</span>
-            </button>
-            <button type="button" className="master-chat-voice-call-button video" onClick={() => void startCall(activePerson, 'video')}
-              disabled={!enabled || busy || !client || !!activeCall} title={'Video call ' + activePerson.username} aria-label={'Video call ' + activePerson.username}>
-              <Video size={16}/><span>Video</span>
-            </button>
-          </div>, portalRoot)
-        : <div className={"master-chat-active-call-actions" + (portalRoot ? " portal" : "")}>
-            <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
-              disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
-              <PhoneCall size={16}/><span>Call</span>
-            </button>
-            <button type="button" className="master-chat-voice-call-button video" onClick={() => void startCall(activePerson, 'video')}
-              disabled={!enabled || busy || !client || !!activeCall} title={'Video call ' + activePerson.username} aria-label={'Video call ' + activePerson.username}>
-              <Video size={16}/><span>Video</span>
-            </button>
-          </div>)
-      : (portalRoot
-        ? createPortal(<button type="button" className="master-chat-voice-call-button"
-            onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
-            title="Choose whom to call" aria-label="Choose whom to call">
-            <PhoneCall size={17}/> <span>Call someone</span>
-          </button>, portalRoot)
-        : <button type="button" className="master-chat-voice-call-button"
-            onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
-            title="Choose whom to call" aria-label="Choose whom to call">
-            <PhoneCall size={17}/> <span>Call someone</span>
-          </button>))}
+    {showCallLauncher && callState === 'idle' && (portalRoot
+      ? createPortal(<button type="button" className="master-chat-voice-call-button"
+          onClick={() => { setRecipientSearch(''); setRecipientPickerOpen(true); }}
+          disabled={!enabled || busy || !client || !!activeCall}
+          title="Choose a person and call type" aria-label="Choose a person and call type">
+          <PhoneCall size={17}/><span>{activePerson ? 'Call' : 'Call someone'}</span>
+        </button>, portalRoot)
+      : <button type="button" className="master-chat-voice-call-button"
+          onClick={() => { setRecipientSearch(''); setRecipientPickerOpen(true); }}
+          disabled={!enabled || busy || !client || !!activeCall}
+          title="Choose a person and call type" aria-label="Choose a person and call type">
+          <PhoneCall size={17}/><span>{activePerson ? 'Call' : 'Call someone'}</span>
+        </button>)}
     {recipientPickerOpen && showCallLauncher && createPortal(
       <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
         <section className="master-chat-recipient-picker" role="dialog" aria-modal="true" aria-label="Choose a person to call">
           <header><span><PhoneCall size={19}/><b>Who would you like to call?</b></span><button type="button" aria-label="Close call picker" onClick={() => setRecipientPickerOpen(false)}><X size={18}/></button></header>
-          <p>Select one of your friends. They must accept the incoming voice or video call before you connect.</p>
+          <p>Select a friend, then choose voice or video. Search shows a person only when the full username matches exactly.</p>
+          <label className="master-chat-recipient-search"><Search size={16} aria-hidden="true"/><input type="search" value={recipientSearch}
+            onChange={event => setRecipientSearch(event.target.value)} placeholder="Type exact username" autoComplete="off"
+            aria-label="Search friends by exact username"/></label>
           <div className="master-chat-recipient-picker-list">
-            {people.filter(person => person.id !== profile.id).map(person => <div className="master-chat-recipient-row" key={person.id}>
+            {people.filter(person => person.id !== profile.id && (!recipientSearch.trim() || person.username.toLowerCase() === recipientSearch.trim().toLowerCase())).map(person => <div className="master-chat-recipient-row" key={person.id}>
               <span className="master-chat-recipient-avatar">{person.avatar_data ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
               <span className="master-chat-recipient-label"><b>{person.username}</b><small>Choose a call type</small></span>
               <button type="button" className="master-chat-call-type-button" title={'Start voice call with '+person.username} aria-label={'Start voice call with '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'audio')}><PhoneCall size={17}/><span>Voice</span></button>
               <button type="button" className="master-chat-call-type-button video" title={'Start video call with '+person.username} aria-label={'Start video call with '+person.username} disabled={busy || !!activeCall} onClick={() => void startCall(person, 'video')}><Video size={17}/><span>Video</span></button>
             </div>)}
-            {!people.some(person => person.id !== profile.id) && <div className="master-chat-recipient-empty"><b>No friends to call yet</b><span>Search a username and become friends first.</span></div>}
+            {!people.some(person => person.id !== profile.id && (!recipientSearch.trim() || person.username.toLowerCase() === recipientSearch.trim().toLowerCase())) && <div className="master-chat-recipient-empty"><b>{recipientSearch.trim() ? 'No exact username match' : 'No friends to call yet'}</b><span>{recipientSearch.trim() ? 'Type the full username exactly as it appears.' : 'Search a username and become friends first.'}</span></div>}
           </div>
           <small className="master-chat-recipient-security"><ShieldCheck size={14}/> Calls require the private TURN relay; there is no direct-IP fallback.</small>
         </section>
