@@ -3310,3 +3310,424 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button{min-width:42px!important;width:46px!important;padding:0!important}
   .master-chat-call-card.video-call>.master-chat-call-actions.video-floating-controls button.decline{width:54px!important}
 }
+
+/* Group-call controls and responsive multi-member video stage. */
+.master-chat-group-call-button{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  flex:0 0 auto!important;
+  min-height:36px!important;
+  padding:0 11px!important;
+  border:1px solid color-mix(in srgb,var(--accent) 50%,var(--border))!important;
+  border-radius:10px!important;
+  background:color-mix(in srgb,var(--accent) 12%,var(--surface))!important;
+  color:var(--text)!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+.master-chat-group-call-button svg{color:var(--accent)!important}
+.master-chat-group-call-picker-overlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483647!important;
+  display:grid!important;
+  place-items:center!important;
+  overflow:auto!important;
+  padding:18px!important;
+  background:rgba(3,7,15,.78)!important;
+  -webkit-backdrop-filter:blur(14px)!important;
+  backdrop-filter:blur(14px)!important;
+}
+.master-chat-group-call-picker,
+.master-chat-group-call-invite{
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  gap:12px!important;
+  width:min(100%,410px)!important;
+  max-height:calc(100dvh - 36px)!important;
+  overflow:auto!important;
+  padding:27px 22px 23px!important;
+  border:1px solid #ffffff24!important;
+  border-radius:24px!important;
+  background:linear-gradient(145deg,#1b2a41,#0b1425)!important;
+  color:#f6f8ff!important;
+  text-align:center!important;
+  box-shadow:0 30px 100px #000a!important;
+}
+.master-chat-group-call-close{
+  display:grid!important;
+  place-items:center!important;
+  flex:0 0 36px!important;
+  width:36px!important;
+  height:36px!important;
+  border:1px solid #ffffff25!important;
+  border-radius:10px!important;
+  background:#ffffff0c!important;
+  color:#f5f7ff!important;
+  cursor:pointer!important;
+}
+.master-chat-group-call-picker>.master-chat-group-call-close{
+  position:absolute!important;
+  top:11px!important;
+  right:11px!important;
+}
+.master-chat-group-call-icon{
+  display:grid!important;
+  place-items:center!important;
+  width:56px!important;
+  height:56px!important;
+  border:1px solid #8a82fa55!important;
+  border-radius:17px!important;
+  background:#7e71f22a!important;
+  color:#b8b0ff!important;
+}
+.master-chat-group-call-icon.incoming{
+  border-color:#69d7aa66!important;
+  background:#1e654c55!important;
+  color:#8be8c0!important;
+}
+.master-chat-group-call-eyebrow{
+  margin:0!important;
+  color:#b9b5ff!important;
+  font-size:10px!important;
+  font-weight:850!important;
+  letter-spacing:1.5px!important;
+}
+.master-chat-group-call-picker h3,
+.master-chat-group-call-invite h3{
+  margin:0!important;
+  color:#f6f8ff!important;
+  font-size:22px!important;
+  line-height:1.25!important;
+  overflow-wrap:anywhere!important;
+}
+.master-chat-group-call-picker>p,
+.master-chat-group-call-invite>p{
+  margin:0!important;
+  color:#c1cce0!important;
+  font-size:12px!important;
+  line-height:1.65!important;
+}
+.master-chat-group-call-actions{
+  display:flex!important;
+  align-items:stretch!important;
+  justify-content:center!important;
+  gap:10px!important;
+  width:100%!important;
+  margin-top:5px!important;
+}
+.master-chat-group-call-actions>button{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:9px!important;
+  flex:1 1 0!important;
+  min-width:0!important;
+  min-height:54px!important;
+  padding:9px 11px!important;
+  border:1px solid #ffffff23!important;
+  border-radius:13px!important;
+  background:#ffffff0b!important;
+  color:#f6f8ff!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  line-height:1.25!important;
+  text-align:left!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
+}
+.master-chat-group-call-actions>button.voice-option{border-color:#4ab98b66!important;background:#164b3c!important}
+.master-chat-group-call-actions>button.video-option{border-color:#6fa4ff66!important;background:#203f78!important}
+.master-chat-group-call-actions>button.accept{border-color:#61d6a3!important;background:#16875b!important;color:#fff!important}
+.master-chat-group-call-actions>button.decline{border-color:#ff7b8c!important;background:#ce334a!important;color:#fff!important}
+.master-chat-group-call-actions>button span{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;gap:3px!important;min-width:0!important}
+.master-chat-group-call-actions>button b{color:inherit!important;font-size:11px!important}
+.master-chat-group-call-actions>button small{color:#d7deee!important;font-size:9px!important;font-weight:600!important}
+.master-chat-group-call-actions>button:disabled{opacity:.55!important;cursor:wait!important}
+.master-chat-group-call-invite-group{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  color:#9ee3c5!important;
+  font-weight:800!important;
+}
+.master-chat-group-call-error{color:#ffb4be!important}
+.master-chat-group-call-overlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483646!important;
+  display:block!important;
+  overflow:hidden!important;
+  padding:0!important;
+  background:#05070d!important;
+}
+.master-chat-group-call-stage{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  width:100dvw!important;
+  height:100vh!important;
+  height:100dvh!important;
+  overflow:hidden!important;
+  border:0!important;
+  background:#05070d!important;
+  color:#f7f8fc!important;
+  font-family:inherit!important;
+}
+.master-chat-group-call-topbar{
+  position:absolute!important;
+  top:calc(env(safe-area-inset-top,0px) + 12px)!important;
+  left:calc(env(safe-area-inset-left,0px) + 12px)!important;
+  right:calc(env(safe-area-inset-right,0px) + 12px)!important;
+  z-index:8!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+  min-height:54px!important;
+  padding:8px 10px!important;
+  border:1px solid #ffffff25!important;
+  border-radius:16px!important;
+  background:#111827bd!important;
+  color:#fff!important;
+  -webkit-backdrop-filter:blur(15px)!important;
+  backdrop-filter:blur(15px)!important;
+  box-shadow:0 6px 25px #0003!important;
+}
+.master-chat-group-call-avatar{
+  display:grid!important;
+  place-items:center!important;
+  flex:0 0 38px!important;
+  width:38px!important;
+  height:38px!important;
+  overflow:hidden!important;
+  border:1px solid #ffffff38!important;
+  border-radius:50%!important;
+  background:linear-gradient(145deg,#6477bb,#26375d)!important;
+  color:#fff!important;
+  font-size:14px!important;
+  font-weight:850!important;
+}
+.master-chat-group-call-avatar img{width:100%!important;height:100%!important;object-fit:cover!important}
+.master-chat-group-call-title{display:flex!important;flex:1 1 auto!important;flex-direction:column!important;gap:4px!important;min-width:0!important}
+.master-chat-group-call-title b{overflow:hidden!important;color:#fff!important;font-size:13px!important;font-weight:850!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.master-chat-group-call-title small{color:#cbd5e6!important;font-size:10px!important;font-variant-numeric:tabular-nums!important}
+.master-chat-group-call-private{display:flex!important;align-items:center!important;gap:4px!important;flex:0 0 auto!important;color:#a7e8cb!important;font-size:9px!important;font-weight:750!important}
+.master-chat-group-call-topbar .master-chat-group-call-close{flex-basis:38px!important;width:38px!important;height:38px!important;border-radius:50%!important;background:#c52f45!important;border-color:#fa8594!important}
+.master-chat-group-call-video-stage{
+  position:absolute!important;
+  inset:0!important;
+  overflow:hidden!important;
+  background:#05070d!important;
+}
+.master-chat-group-video-main{
+  position:absolute!important;
+  inset:0!important;
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  border:0!important;
+  border-radius:0!important;
+  outline:none!important;
+  object-fit:cover!important;
+  background:#080b12!important;
+  cursor:pointer!important;
+}
+.master-chat-group-video-main.self{transform:scaleX(-1)!important}
+.master-chat-group-call-thumbnails{
+  position:absolute!important;
+  right:calc(env(safe-area-inset-right,0px) + 14px)!important;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 110px)!important;
+  z-index:6!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-end!important;
+  gap:8px!important;
+  max-height:calc(100dvh - 190px)!important;
+  overflow-y:auto!important;
+  padding:3px!important;
+}
+.master-chat-group-call-thumbnails .master-chat-group-thumb{
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:stretch!important;
+  justify-content:flex-end!important;
+  flex:0 0 auto!important;
+  width:clamp(86px,18vw,140px)!important;
+  height:clamp(105px,21vh,172px)!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  padding:0!important;
+  border:2px solid #ffffffdf!important;
+  border-radius:14px!important;
+  background:#171b24!important;
+  color:#fff!important;
+  box-shadow:0 7px 25px #0008!important;
+  cursor:pointer!important;
+  touch-action:manipulation!important;
+}
+.master-chat-group-call-thumbnails .master-chat-group-thumb-video{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  object-fit:cover!important;
+  background:#171b24!important;
+}
+.master-chat-group-call-thumbnails .master-chat-group-thumb-video.self{transform:scaleX(-1)!important}
+.master-chat-group-thumb>span:last-child{
+  position:relative!important;
+  z-index:2!important;
+  overflow:hidden!important;
+  padding:15px 5px 5px!important;
+  background:linear-gradient(transparent,#05070de8)!important;
+  color:#fff!important;
+  font-size:9px!important;
+  font-weight:800!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.master-chat-group-thumb-avatar{
+  position:absolute!important;
+  inset:0!important;
+  display:grid!important;
+  place-items:center!important;
+  background:linear-gradient(145deg,#5b6eb4,#24345a)!important;
+  color:#fff!important;
+  font-size:26px!important;
+}
+.master-chat-group-thumb-avatar img{width:100%!important;height:100%!important;object-fit:cover!important}
+.master-chat-group-video-placeholder{
+  position:absolute!important;
+  inset:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:10px!important;
+  background:radial-gradient(ellipse at center,#172239,#05070d 68%)!important;
+  color:#fff!important;
+}
+.master-chat-group-call-avatar.large{width:90px!important;height:90px!important;flex-basis:90px!important;font-size:26px!important}
+.master-chat-group-video-placeholder b{font-size:19px!important}
+.master-chat-group-video-placeholder small{color:#bac7dc!important;font-size:11px!important}
+.master-chat-group-call-audio-stage{
+  position:absolute!important;
+  inset:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:14px!important;
+  overflow:auto!important;
+  padding:110px 18px 110px!important;
+  background:radial-gradient(ellipse at center,#192741,#05070d 68%)!important;
+  text-align:center!important;
+}
+.master-chat-group-call-audio-orb{
+  display:grid!important;
+  place-items:center!important;
+  width:92px!important;
+  height:92px!important;
+  border:1px solid #8a82fa66!important;
+  border-radius:50%!important;
+  background:#7e71f22b!important;
+  color:#c6c0ff!important;
+  box-shadow:0 0 0 13px #7e71f20e!important;
+}
+.master-chat-group-call-audio-stage h2{margin:0!important;color:#f8f9ff!important;font-size:24px!important}
+.master-chat-group-call-audio-stage p{margin:0!important;color:#bdc9dc!important;font-size:12px!important}
+.master-chat-group-audio-people{display:flex!important;flex-wrap:wrap!important;justify-content:center!important;gap:14px!important;max-width:650px!important;margin-top:12px!important}
+.master-chat-group-audio-person{display:flex!important;flex-direction:column!important;align-items:center!important;gap:7px!important;width:86px!important;color:#f6f8ff!important}
+.master-chat-group-audio-person>span{display:grid!important;place-items:center!important;width:48px!important;height:48px!important;overflow:hidden!important;border:1px solid #ffffff26!important;border-radius:50%!important;background:#29365b!important;color:#fff!important;font-size:16px!important;font-weight:850!important}
+.master-chat-group-audio-person img{width:100%!important;height:100%!important;object-fit:cover!important}
+.master-chat-group-audio-person b{max-width:100%!important;overflow:hidden!important;color:#e9edf7!important;font-size:10px!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.master-chat-group-call-hidden-audio{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+.master-chat-group-call-controls{
+  position:absolute!important;
+  left:50%!important;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 18px)!important;
+  z-index:10!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:10px!important;
+  width:max-content!important;
+  max-width:calc(100% - 24px)!important;
+  padding:8px!important;
+  border:1px solid #ffffff2d!important;
+  border-radius:24px!important;
+  background:#111827df!important;
+  -webkit-backdrop-filter:blur(18px)!important;
+  backdrop-filter:blur(18px)!important;
+  box-shadow:0 12px 40px #0007!important;
+  transform:translateX(-50%)!important;
+}
+.master-chat-group-call-controls button{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:7px!important;
+  flex:0 1 auto!important;
+  min-width:76px!important;
+  min-height:44px!important;
+  padding:0 13px!important;
+  border:1px solid #ffffff24!important;
+  border-radius:15px!important;
+  background:#303a4b!important;
+  color:#fff!important;
+  font-size:11px!important;
+  font-weight:850!important;
+  white-space:nowrap!important;
+}
+.master-chat-group-call-controls button.muted{background:#e6b44e!important;color:#20202a!important}
+.master-chat-group-call-controls button.end{min-width:90px!important;background:#d73349!important;border-color:#ff7a8b!important}
+.master-chat-group-call-notice,
+.master-chat-group-call-toast{
+  display:flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  max-width:min(440px,calc(100% - 24px))!important;
+  padding:10px 12px!important;
+  border:1px solid #ffffff27!important;
+  border-radius:12px!important;
+  background:#111827ed!important;
+  color:#f4f7ff!important;
+  font-size:11px!important;
+  line-height:1.5!important;
+  box-shadow:0 8px 25px #0006!important;
+}
+.master-chat-group-call-notice{position:absolute!important;left:50%!important;top:calc(env(safe-area-inset-top,0px) + 80px)!important;z-index:9!important;transform:translateX(-50%)!important}
+.master-chat-group-call-toast{position:fixed!important;left:50%!important;bottom:14px!important;z-index:2147483647!important;transform:translateX(-50%)!important}
+.master-chat-group-call-toast>span{flex:1 1 auto!important}
+.master-chat-group-call-toast button{display:grid!important;place-items:center!important;flex:0 0 25px!important;width:25px!important;height:25px!important;border:1px solid #ffffff24!important;border-radius:7px!important;background:#ffffff0b!important;color:#fff!important}
+.master-chat-group-call-stage button:focus-visible,
+.master-chat-call-video-stage>video:focus-visible{outline:2px solid #b4aaff!important;outline-offset:3px!important}
+@media(max-width:560px){
+  .master-chat-group-call-button{min-height:34px!important;padding:0 8px!important;font-size:9px!important;gap:5px!important}
+  .master-chat-group-call-button span{max-width:54px!important;overflow:hidden!important;text-overflow:ellipsis!important}
+  .master-chat-group-call-topbar{gap:7px!important;min-height:48px!important;padding:6px 8px!important}
+  .master-chat-group-call-avatar{flex-basis:33px!important;width:33px!important;height:33px!important}
+  .master-chat-group-call-private{display:none!important}
+  .master-chat-group-call-thumbnails{right:calc(env(safe-area-inset-right,0px) + 8px)!important;bottom:calc(env(safe-area-inset-bottom,0px) + 98px)!important;gap:6px!important}
+  .master-chat-group-call-thumbnails .master-chat-group-thumb{width:clamp(78px,24vw,112px)!important;height:clamp(100px,18vh,138px)!important;border-radius:12px!important}
+  .master-chat-group-call-controls{bottom:calc(env(safe-area-inset-bottom,0px) + 11px)!important;gap:6px!important;padding:6px!important;max-width:calc(100% - 16px)!important}
+  .master-chat-group-call-controls button{min-width:0!important;min-height:42px!important;padding:0 10px!important;gap:5px!important;font-size:10px!important}
+  .master-chat-group-call-controls button.end{min-width:76px!important}
+  .master-chat-group-call-picker,.master-chat-group-call-invite{padding:25px 16px 18px!important}
+  .master-chat-group-call-actions{gap:7px!important}
+  .master-chat-group-call-actions>button{gap:6px!important;padding:8px!important}
+}
+@media(max-width:360px){
+  .master-chat-group-call-controls button span{display:none!important}
+  .master-chat-group-call-controls button{min-width:44px!important;width:46px!important;padding:0!important}
+  .master-chat-group-call-controls button.end{width:54px!important}
+}
+@keyframes master-chat-group-call-spin{to{transform:rotate(360deg)}}
+.master-chat-group-call-actions .spin{animation:master-chat-group-call-spin .9s linear infinite!important}
