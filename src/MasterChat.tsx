@@ -446,8 +446,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [noticeKind, setNoticeKind] = useState<'error' | 'success' | 'info'>('info');
   const [people, setPeople] = useState<ChatProfile[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [friendRequestPopup, setFriendRequestPopup] = useState<FriendRequest | null>(null);
-  const friendRequestSeenIdsRef = useRef<Set<string>>(new Set());
+  const [friendRequestsOpen, setFriendRequestsOpen] = useState(false);
   const [peopleQuery, setPeopleQuery] = useState('');
   const [directoryResults, setDirectoryResults] = useState<ChatProfile[]>([]);
   const [directorySearchBusy, setDirectorySearchBusy] = useState(false);
@@ -891,8 +890,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         setProfile(null);
         setPeople([]);
         setFriendRequests([]);
-        friendRequestSeenIdsRef.current.clear();
-        setFriendRequestPopup(null);
+        setFriendRequestsOpen(false);
         setGroups([]);
         setActivePerson(null);
         setActiveGroup(null);
@@ -1141,19 +1139,6 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     [friendRequests, profile?.id]);
   const friends = useMemo(() => people.filter(person => friendIds.has(person.id)), [people, friendIds]);
   const incomingFriendRequests = useMemo(() => friendRequests.filter(request => request.status === 'pending' && request.recipient_id === profile?.id), [friendRequests, profile?.id]);
-
-  // Alert immediately when a new incoming request lands. The inbox remains the source of truth,
-  // and polling below provides a fallback if the browser's realtime subscription is interrupted.
-  useEffect(() => {
-    if (!profile?.id) {
-      friendRequestSeenIdsRef.current.clear();
-      setFriendRequestPopup(null);
-      return;
-    }
-    const unseen = incomingFriendRequests.find(request => !friendRequestSeenIdsRef.current.has(request.id));
-    incomingFriendRequests.forEach(request => friendRequestSeenIdsRef.current.add(request.id));
-    if (unseen) setFriendRequestPopup(current => current?.id === unseen.id ? current : unseen);
-  }, [incomingFriendRequests, profile?.id]);
 
   useEffect(() => {
     if (!pinUnlocked || !session || !profile || !supabaseClient) return;
@@ -2636,20 +2621,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
     <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={friends} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
-    {friendRequestPopup && <div className="master-chat-friend-request-popup-overlay" role="presentation">
-      <section className="master-chat-friend-request-popup" role="dialog" aria-modal="true" aria-labelledby="master-chat-friend-request-popup-title">
-        <button type="button" className="master-chat-friend-request-popup-close" aria-label="Close friend request notification"
-          onClick={() => setFriendRequestPopup(null)}><X size={17}/></button>
-        <span className="master-chat-friend-request-popup-icon"><UserPlus size={22}/></span>
-        <p className="master-chat-friend-request-popup-eyebrow">NEW FRIEND REQUEST</p>
-        <h3 id="master-chat-friend-request-popup-title">{people.find(person => person.id === friendRequestPopup.requester_id)?.username ?? 'Someone'} wants to be your friend</h3>
-        <p className="master-chat-friend-request-popup-message">Accept to add this person to your Friends list and unlock direct messages, voice calls, and video calls. You can also decline and receive another request from them later.</p>
-        <div className="master-chat-friend-request-popup-actions">
-          <button type="button" className="master-chat-friend-decline" onClick={() => { const request = friendRequestPopup; setFriendRequestPopup(null); void respondToFriendRequest(request, 'declined'); }}>Decline</button>
-          <button type="button" className="master-chat-friend-add" onClick={() => { const request = friendRequestPopup; setFriendRequestPopup(null); void respondToFriendRequest(request, 'accepted'); }}><Check size={15}/> Accept friend</button>
-        </div>
-      </section>
-    </div>}
+
     {conversationFullscreen && <>
        {iosMode
          ? createPortal(<button type="button" className="master-chat-fullscreen-exit master-chat-ios-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>, document.body)
@@ -2686,15 +2658,21 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
          })}
          {!directorySearchBusy && !directorySearchError && !directoryResults.length && <p className="master-chat-friend-empty">No matching usernames found.</p>}
        </div>}
-       <section className="master-chat-friend-requests" aria-labelledby="master-chat-friend-requests-heading">
+       <button type="button" className={'master-chat-friend-request-bar'+(friendRequestsOpen ? ' open' : '')}
+         aria-expanded={friendRequestsOpen} aria-controls="master-chat-friend-requests-panel"
+         onClick={() => { const next = !friendRequestsOpen; setFriendRequestsOpen(next); if (next) void loadFriendRequests(profile.id, true); }}>
+         <span className="master-chat-friend-request-bar-icon"><UserPlus size={17}/></span>
+         <span className="master-chat-friend-request-bar-label"><b>Friend Requests</b><small>{incomingFriendRequests.length ? 'Requests waiting for you' : 'Review incoming requests'}</small></span>
+         <span className={'master-chat-friend-request-count'+(incomingFriendRequests.length ? ' has-requests' : '')}>{incomingFriendRequests.length}</span>
+         <ChevronRight size={16} className="master-chat-friend-request-chevron"/>
+       </button>
+       {friendRequestsOpen && <section id="master-chat-friend-requests-panel" className="master-chat-friend-requests" aria-labelledby="master-chat-friend-requests-heading">
          <div className="master-chat-list-heading">
            <UserPlus size={14}/>
-           <span id="master-chat-friend-requests-heading">FRIEND REQUESTS</span>
+           <span id="master-chat-friend-requests-heading">INCOMING REQUESTS</span>
            <small aria-label={incomingFriendRequests.length + ' incoming friend requests'}>{incomingFriendRequests.length}</small>
            <button type="button" className="master-chat-request-refresh" title="Refresh friend requests" aria-label="Refresh friend requests"
-             onClick={() => { void loadFriendRequests(profile.id); void loadPeople(profile.id); }}>
-             <MoreHorizontal size={14}/>
-           </button>
+             onClick={() => { void loadFriendRequests(profile.id); void loadPeople(profile.id); }}><MoreHorizontal size={14}/></button>
          </div>
          {incomingFriendRequests.length ? incomingFriendRequests.map(request => {
            const person = people.find(item => item.id === request.requester_id)
@@ -2705,8 +2683,8 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
              <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(request, 'accepted')} disabled={!!friendRequestBusyId}>{friendRequestBusyId===request.id?'Accepting…':'Accept'}</button>
              <button type="button" className="master-chat-friend-decline" onClick={() => void respondToFriendRequest(request, 'declined')} disabled={!!friendRequestBusyId} aria-label={'Decline friend request from '+person.username}>{friendRequestBusyId===request.id?'…':'Decline'}</button>
            </div>;
-         }) : <p className="master-chat-friend-empty">No incoming requests yet. When someone adds you, accept or decline it here.</p>}
-       </section>
+         }) : <p className="master-chat-friend-empty">No friend requests right now. New requests will appear here.</p>}
+       </section>}
        <div className="master-chat-list-heading"><Users size={14}/><span>FRIENDS</span><small>{filteredPeople.length}</small></div>
        <div className="master-chat-people">
          {filteredPeople.map(person => <button type="button" className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
