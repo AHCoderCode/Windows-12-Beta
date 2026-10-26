@@ -436,7 +436,7 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
       // Group-call invitations also have rows in aeroshell_calls. Never count those rows
       // as an unrelated active direct call, or an invitation blocks its own acceptance.
       const { data: activeCalls, error: activeError } = await client.from('aeroshell_calls')
-        .select('id, status, created_at')
+        .select('id, status, created_at, updated_at')
         .in('status', ['ringing', 'accepted'])
         .or('caller_id.eq.' + profile.id + ',callee_id.eq.' + profile.id)
         .is('group_call_id', null)
@@ -445,14 +445,17 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
       // Direct incoming calls expire after 45 seconds. Clear orphaned ringing rows instead
       // of letting an old unanswered call permanently lock group calling.
       const now = Date.now();
-      const staleRingingIds = (activeCalls ?? [])
-        .filter(call => call.status === 'ringing' && (!Number.isFinite(Date.parse(call.created_at)) || now - Date.parse(call.created_at) > 45_000))
+      const staleCallIds = (activeCalls ?? [])
+        .filter(call =>
+          (call.status === 'ringing' && (!Number.isFinite(Date.parse(call.created_at)) || now - Date.parse(call.created_at) > 45_000))
+          || (call.status === 'accepted' && (!Number.isFinite(Date.parse(call.updated_at)) || now - Date.parse(call.updated_at) > 180_000))
+        )
         .map(call => call.id);
-      if (staleRingingIds.length) {
+      if (staleCallIds.length) {
         await client.from('aeroshell_calls').update({ status: 'ended' })
-          .in('id', staleRingingIds).eq('status', 'ringing');
+          .in('id', staleCallIds).in('status', ['ringing', 'accepted']);
       }
-      const liveDirectCalls = (activeCalls ?? []).filter(call => !staleRingingIds.includes(call.id));
+      const liveDirectCalls = (activeCalls ?? []).filter(call => !staleCallIds.includes(call.id));
       if (liveDirectCalls.length) throw new Error('A direct call is still active in another window. End that call before joining the group call.');
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser does not support calls over HTTPS.');
       stream = await navigator.mediaDevices.getUserMedia({
@@ -551,6 +554,23 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
       void localVideoRef.current.play().catch(() => undefined);
     }
   }, [localStream, activeSession?.id, mainVideoUserId]);
+
+  // Keep this participant's accepted group-call leg fresh. The database uses
+  // this timestamp to distinguish a live call from an abandoned accepted row.
+  useEffect(() => {
+    if (!client || !activeSession || !localStream) return;
+    let cancelled = false;
+    const heartbeat = async () => {
+      const { error } = await client.from('aeroshell_calls').update({ status: 'accepted' })
+        .eq('group_call_id', activeSession.id)
+        .eq('status', 'accepted')
+        .or('caller_id.eq.' + profile.id + ',callee_id.eq.' + profile.id);
+      if (error && !cancelled) console.warn('Group-call heartbeat failed:', error.message);
+    };
+    void heartbeat();
+    const timer = window.setInterval(() => { void heartbeat(); }, 25_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [client, activeSession?.id, localStream, profile.id]);
 
   useEffect(() => {
     if (!enabled || !client) {
