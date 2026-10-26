@@ -2706,3 +2706,258 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
   .master-chat-directory-result button{padding:0 9px;min-height:34px}
   .master-chat-friend-pending{max-width:104px;padding:6px}
 }
+
+/* Master Chat final friend-invite and call-picker visibility fixes. */
+.master-chat-directory-results,
+.master-chat-friend-requests{
+  flex:0 0 auto!important;
+  min-width:0!important;
+  color:var(--text)!important;
+  background:var(--surface)!important;
+  border:1px solid var(--border)!important;
+}
+.master-chat-directory-results .master-chat-list-heading,
+.master-chat-friend-requests .master-chat-list-heading{
+  color:var(--muted)!important;
+  background:var(--soft)!important;
+}
+.master-chat-directory-result{
+  display:flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  min-width:0!important;
+  color:var(--text)!important;
+  background:var(--surface)!important;
+}
+.master-chat-directory-result .master-chat-person-meta b{color:var(--text)!important}
+.master-chat-directory-result .master-chat-person-meta small{color:var(--muted)!important}
+.master-chat-directory-result button.master-chat-friend-add,
+.master-chat-friend-request-popup-actions button.master-chat-friend-add{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:6px!important;
+  min-height:36px!important;
+  padding:0 12px!important;
+  border:1px solid #8b7cf6!important;
+  border-radius:9px!important;
+  background:#7867e8!important;
+  color:#fff!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
+  box-shadow:0 3px 10px #5946d42b!important;
+}
+.master-chat-directory-result button.master-chat-friend-add:disabled,
+.master-chat-friend-request-popup-actions button:disabled{opacity:.55!important}
+.master-chat-directory-result button.master-chat-friend-decline,
+.master-chat-friend-request-popup-actions button.master-chat-friend-decline{
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-height:36px!important;
+  padding:0 11px!important;
+  border:1px solid var(--border)!important;
+  border-radius:9px!important;
+  background:#252c3a!important;
+  color:#f2f4fb!important;
+  font-size:11px!important;
+  font-weight:750!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
+}
+.master-chat-friend-pending{
+  color:var(--text)!important;
+  background:var(--soft)!important;
+  border-color:var(--border)!important;
+}
+
+/* The call picker renders div rows with nested action buttons, not direct buttons. */
+.master-chat-recipient-picker-list>.master-chat-recipient-row{
+  display:flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  width:100%!important;
+  min-width:0!important;
+  min-height:66px!important;
+  padding:9px!important;
+  border:1px solid #ffffff20!important;
+  border-radius:14px!important;
+  background:#ffffff08!important;
+  color:#f4f7ff!important;
+}
+.master-chat-recipient-row .master-chat-recipient-avatar{
+  flex:0 0 36px!important;
+  width:36px!important;
+  height:36px!important;
+  font-size:13px!important;
+}
+.master-chat-recipient-row .master-chat-recipient-label{
+  flex:1 1 auto!important;
+  width:auto!important;
+  min-width:45px!important;
+  gap:4px!important;
+  overflow:hidden!important;
+}
+.master-chat-recipient-row .master-chat-recipient-label b{
+  display:block!important;
+  overflow:hidden!important;
+  color:#f4f7ff!important;
+  font-size:12px!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.master-chat-recipient-row .master-chat-recipient-label small{
+  display:block!important;
+  color:#bdc9e0!important;
+  font-size:10px!important;
+  white-space:normal!important;
+}
+.master-chat-recipient-row .master-chat-call-type-button{
+  display:inline-flex!important;
+  flex:0 0 auto!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  min-width:68px!important;
+  min-height:38px!important;
+  padding:0 9px!important;
+  border:1px solid #49b88d!important;
+  border-radius:10px!important;
+  background:#174c3d!important;
+  color:#f5fffb!important;
+  font-size:11px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  white-space:nowrap!important;
+  appearance:none!important;
+  -webkit-appearance:none!important;
+  box-shadow:none!important;
+}
+.master-chat-recipient-row .master-chat-call-type-button span{
+  display:inline!important;
+  color:inherit!important;
+  font-size:11px!important;
+  visibility:visible!important;
+  opacity:1!important;
+}
+.master-chat-recipient-row .master-chat-call-type-button svg{
+  display:block!important;
+  width:16px!important;
+  height:16px!important;
+  flex:0 0 16px!important;
+  color:#c7f8e5!important;
+  opacity:1!important;
+}
+.master-chat-recipient-row .master-chat-call-type-button.video{
+  border-color:#6097ff!important;
+  background:#203f78!important;
+  color:#fff!important;
+}
+.master-chat-recipient-row .master-chat-call-type-button.video svg{color:#d8e7ff!important}
+.master-chat-recipient-row .master-chat-call-type-button:hover:not(:disabled){filter:brightness(1.12)!important}
+.master-chat-recipient-row .master-chat-call-type-button:disabled{opacity:.55!important}
+
+/* A clear, themed prompt when a friend request arrives; actions stay readable on light/dark themes. */
+.master-chat-friend-request-popup-overlay{
+  position:fixed!important;
+  inset:0!important;
+  z-index:2147483647!important;
+  display:grid!important;
+  place-items:center!important;
+  overflow:auto!important;
+  padding:18px!important;
+  background:rgba(5,10,21,.76)!important;
+  -webkit-backdrop-filter:blur(12px)!important;
+  backdrop-filter:blur(12px)!important;
+}
+.master-chat-friend-request-popup{
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  gap:11px!important;
+  width:min(100%,390px)!important;
+  max-height:calc(100dvh - 36px)!important;
+  overflow:auto!important;
+  padding:28px 22px 22px!important;
+  border:1px solid #ffffff25!important;
+  border-radius:22px!important;
+  background:linear-gradient(145deg,#1a2940,#0b1425)!important;
+  color:#f4f7ff!important;
+  text-align:center!important;
+  box-shadow:0 25px 85px #0009!important;
+}
+.master-chat-friend-request-popup-close{
+  position:absolute!important;
+  top:10px!important;
+  right:10px!important;
+  display:grid!important;
+  place-items:center!important;
+  width:32px!important;
+  height:32px!important;
+  border:1px solid #ffffff2a!important;
+  border-radius:9px!important;
+  background:#ffffff0b!important;
+  color:#eef3ff!important;
+}
+.master-chat-friend-request-popup-icon{
+  display:grid!important;
+  place-items:center!important;
+  width:54px!important;
+  height:54px!important;
+  border:1px solid #6ad7ab66!important;
+  border-radius:16px!important;
+  background:#1e654c55!important;
+  color:#87e6bc!important;
+}
+.master-chat-friend-request-popup-eyebrow{
+  margin:1px 0 0!important;
+  color:#9dddc4!important;
+  font-size:10px!important;
+  font-weight:850!important;
+  letter-spacing:1.5px!important;
+}
+.master-chat-friend-request-popup h3{
+  margin:0!important;
+  color:#f6f8ff!important;
+  font-size:21px!important;
+  line-height:1.28!important;
+  overflow-wrap:anywhere!important;
+}
+.master-chat-friend-request-popup-message{
+  margin:0!important;
+  color:#bdc9e0!important;
+  font-size:12px!important;
+  line-height:1.65!important;
+}
+.master-chat-friend-request-popup-actions{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:10px!important;
+  width:100%!important;
+  margin-top:5px!important;
+}
+.master-chat-friend-request-popup-actions button{flex:1 1 0!important}
+.master-chat-friend-request-popup button:focus-visible,
+.master-chat-recipient-row button:focus-visible,
+.master-chat-directory-result button:focus-visible{
+  outline:2px solid #a89cff!important;
+  outline-offset:3px!important;
+}
+@media(max-width:420px){
+  .master-chat-recipient-picker{padding:12px!important;gap:9px!important}
+  .master-chat-recipient-picker-list{gap:6px!important}
+  .master-chat-recipient-picker-list>.master-chat-recipient-row{gap:6px!important;padding:7px!important}
+  .master-chat-recipient-row .master-chat-recipient-avatar{flex-basis:32px!important;width:32px!important;height:32px!important}
+  .master-chat-recipient-row .master-chat-call-type-button{min-width:58px!important;gap:4px!important;padding:0 7px!important;font-size:10px!important}
+  .master-chat-recipient-row .master-chat-call-type-button span{font-size:10px!important}
+  .master-chat-friend-request-popup{padding:26px 16px 18px!important}
+  .master-chat-friend-request-popup-actions{gap:7px!important}
+}
