@@ -2558,4 +2558,12 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-app.master-chat-conversation-fullscreen .master-chat-active-call-actions:not(.portal){position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 10px)}
 @media(max-width:560px){.master-chat-active-call-actions{top:7px;right:7px;gap:4px}.master-chat-active-call-actions .master-chat-voice-call-button{height:32px;min-height:32px;padding:0 8px}.master-chat-active-call-actions .master-chat-voice-call-button span{display:inline}.master-chat-active-call-actions.portal{top:calc(env(safe-area-inset-top,0px) + 8px);right:calc(env(safe-area-inset-right,0px) + 8px)}}
 @media(max-width:380px){.master-chat-active-call-actions{gap:3px}.master-chat-active-call-actions .master-chat-voice-call-button{padding:0 6px;font-size:9px}.master-chat-active-call-actions .master-chat-voice-call-button svg{width:14px;height:14px}}
+/* Keep both direct-call buttons side by side; defeat legacy fixed-position rules on each button. */
+.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-active-call-actions{position:absolute!important;top:8px!important;right:10px!important;bottom:auto!important;left:auto!important;z-index:13!important;display:flex!important;gap:6px!important}
+.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-active-call-actions .master-chat-voice-call-button,
+.master-chat-active-call-actions.portal .master-chat-voice-call-button,
+.master-chat-app.master-chat-conversation-fullscreen .master-chat-active-call-actions .master-chat-voice-call-button{position:static!important;inset:auto!important;min-width:0!important;min-height:34px!important;height:34px!important}
+.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-conversation-header{padding-right:160px!important}
+.master-chat-active-call-actions.portal{position:fixed!important;top:calc(env(safe-area-inset-top,0px) + 8px)!important;right:calc(env(safe-area-inset-right,0px) + 10px)!important;bottom:auto!important;left:auto!important}
+@media(max-width:560px){.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-conversation-header{padding-right:144px!important}.master-chat-active-call-actions{gap:4px!important}.master-chat-app:not(.master-chat-conversation-fullscreen) .master-chat-active-call-actions .master-chat-voice-call-button,.master-chat-active-call-actions.portal .master-chat-voice-call-button{padding:0 7px!important;font-size:9px!important}}
 
