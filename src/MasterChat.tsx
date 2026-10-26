@@ -1145,7 +1145,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         });
         if (error) throw error;
         setUsername(normalized);
-        if (data.session) tell('Your account is ready. Welcome to Master Chat.', 'success');
+        if (data.session) tell('Account created. Search for a username and send a friend request to start chatting.', 'success');
         else tell('Account created, but sign-in is waiting for email confirmation. For username-only accounts, turn off Confirm email in Supabase Auth settings and try again.', 'info');
       } else {
         const { error } = await supabaseClient.auth.signInWithPassword({ email: usernameEmail(normalized), password });
@@ -2506,7 +2506,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
       <div className="master-chat-auth-art"><div className="master-chat-orb"><MessageCircle size={28}/></div><span className="master-chat-spark spark-a"/><span className="master-chat-spark spark-b"/><span className="master-chat-spark spark-c"/></div>
       <p className="eyebrow">AEROSHELL · PEOPLE, CONNECTED</p>
       <h2>{authMode === 'signup' ? 'Meet here.' : 'Welcome back.'}</h2>
-      <p className="master-chat-lead">{authMode === 'signup' ? 'Create a username, set your password, and start a conversation.' : 'Sign in to pick up where your conversations left off.'}</p>
+      <p className="master-chat-lead">{authMode === 'signup' ? 'Create your account, then search for a username and send a friend request. You can chat or call only after they accept.' : 'Sign in to pick up where your conversations left off.'}</p>
       <form className="master-chat-auth-form" onSubmit={submitAuth}>
         <label>Username<input autoComplete="username" value={username} maxLength={20} onChange={event => setUsername(event.target.value)} placeholder="e.g. sky_coder" required minLength={3}/><small>3–20 letters, numbers or underscores</small></label>
         <label>Password<input type="password" autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} required minLength={8} placeholder="At least 8 characters"/></label>
