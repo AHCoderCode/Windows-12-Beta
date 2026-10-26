@@ -517,7 +517,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
         if (status === 'SUBSCRIBED') {
           void (async () => {
             const { data } = await client.from('aeroshell_calls')
-              .select('id, caller_id, callee_id, status, created_at, updated_at')
+              .select('id, caller_id, callee_id, status, created_at, updated_at, media_type')
               .eq('callee_id', profile.id).eq('status', 'ringing')
               .order('created_at', { ascending: false }).limit(5);
             if (!active || !data?.length) return;
