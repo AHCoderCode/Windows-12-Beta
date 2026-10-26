@@ -573,17 +573,39 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
 
   return <>
     <audio ref={remoteAudioRef} autoPlay playsInline aria-label="Remote voice call audio" className="master-chat-remote-audio"/>
-    {showCallLauncher && callState === 'idle' && (portalRoot
-      ? createPortal(<button type="button" className="master-chat-voice-call-button"
-          onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
-          title="Choose whom to call" aria-label="Choose whom to call">
-          <PhoneCall size={17}/> <span>Call someone</span>
-        </button>, portalRoot)
-      : <button type="button" className="master-chat-voice-call-button"
-          onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
-          title="Choose whom to call" aria-label="Choose whom to call">
-          <PhoneCall size={17}/> <span>Call someone</span>
-        </button>)}
+    {showCallLauncher && callState === 'idle' && (activePerson
+      ? (portalRoot
+        ? createPortal(<div className="master-chat-active-call-actions">
+            <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
+              disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
+              <PhoneCall size={16}/><span>Call</span>
+            </button>
+            <button type="button" className="master-chat-voice-call-button video" onClick={() => void startCall(activePerson, 'video')}
+              disabled={!enabled || busy || !client || !!activeCall} title={'Video call ' + activePerson.username} aria-label={'Video call ' + activePerson.username}>
+              <Video size={16}/><span>Video</span>
+            </button>
+          </div>, portalRoot)
+        : <div className="master-chat-active-call-actions">
+            <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
+              disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
+              <PhoneCall size={16}/><span>Call</span>
+            </button>
+            <button type="button" className="master-chat-voice-call-button video" onClick={() => void startCall(activePerson, 'video')}
+              disabled={!enabled || busy || !client || !!activeCall} title={'Video call ' + activePerson.username} aria-label={'Video call ' + activePerson.username}>
+              <Video size={16}/><span>Video</span>
+            </button>
+          </div>)
+      : (portalRoot
+        ? createPortal(<button type="button" className="master-chat-voice-call-button"
+            onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
+            title="Choose whom to call" aria-label="Choose whom to call">
+            <PhoneCall size={17}/> <span>Call someone</span>
+          </button>, portalRoot)
+        : <button type="button" className="master-chat-voice-call-button"
+            onClick={() => setRecipientPickerOpen(true)} disabled={!enabled || busy || !client || !!activeCall}
+            title="Choose whom to call" aria-label="Choose whom to call">
+            <PhoneCall size={17}/> <span>Call someone</span>
+          </button>))}
     {recipientPickerOpen && showCallLauncher && createPortal(
       <div className="master-chat-recipient-picker-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setRecipientPickerOpen(false); }}>
         <section className="master-chat-recipient-picker" role="dialog" aria-modal="true" aria-label="Choose a person to call">
