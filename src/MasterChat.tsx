@@ -7,6 +7,7 @@ import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
+type FriendRequest = { id: string; requester_id: string; recipient_id: string; status: 'pending' | 'accepted' | 'declined'; created_at: string; responded_at?: string | null };
 type MessageType = 'text' | 'file' | 'voice';
 type ScheduledChatMessage = { id: string; user_id: string; recipient_id: string | null; group_id: string | null; body: string; send_at: string };
 const SCHEDULED_CHAT_MESSAGES_KEY = 'aeroshell.master-chat.scheduled-messages.v1';
@@ -436,7 +437,9 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [notice, setNotice] = useState('');
   const [noticeKind, setNoticeKind] = useState<'error' | 'success' | 'info'>('info');
   const [people, setPeople] = useState<ChatProfile[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [peopleQuery, setPeopleQuery] = useState('');
+  const [friendRequestBusyId, setFriendRequestBusyId] = useState('');
   const [activePerson, setActivePerson] = useState<ChatProfile | null>(null);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [activeGroup, setActiveGroup] = useState<ChatGroup | null>(null);
@@ -675,6 +678,76 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     setPeople((data ?? []) as ChatProfile[]);
   }, []);
 
+  const loadFriendRequests = useCallback(async (userId: string) => {
+    if (!supabaseClient) return;
+    const { data, error } = await supabaseClient.from('aeroshell_friend_requests')
+      .select('id, requester_id, recipient_id, status, created_at, responded_at')
+      .or('requester_id.eq.' + userId + ',recipient_id.eq.' + userId)
+      .order('created_at', { ascending: false }).limit(500);
+    if (error) {
+      tell('Friend requests could not load. Refresh and check the friend-request database migration.', 'error');
+      return;
+    }
+    const rows = (data ?? []) as FriendRequest[];
+    setFriendRequests(rows);
+    const otherIds = Array.from(new Set(rows.flatMap(row => [row.requester_id, row.recipient_id]).filter(id => id !== userId)));
+    if (!otherIds.length) return;
+    const { data: members, error: memberError } = await supabaseClient.from('aeroshell_profiles')
+      .select('id, username, avatar_data').in('id', otherIds);
+    if (!memberError && members?.length) {
+      setPeople(current => {
+        const byId = new Map(current.map(person => [person.id, person]));
+        for (const member of members as ChatProfile[]) byId.set(member.id, member);
+        return [...byId.values()].filter(person => person.id !== userId).sort((a, b) => a.username.localeCompare(b.username));
+      });
+    }
+  }, []);
+
+  const sendFriendRequest = async (person: ChatProfile) => {
+    if (!supabaseClient || !profile || friendRequestBusyId) return;
+    const existing = friendRequests.find(row =>
+      (row.requester_id === profile.id && row.recipient_id === person.id)
+      || (row.requester_id === person.id && row.recipient_id === profile.id)
+    );
+    if (existing?.status === 'accepted') { tell('You are already friends.', 'info'); return; }
+    if (existing?.status === 'pending') {
+      tell(existing.requester_id === profile.id ? 'Friend request already sent.' : 'This person has already requested you. Accept it below.', 'info');
+      return;
+    }
+    setFriendRequestBusyId(person.id);
+    try {
+      const { error } = await supabaseClient.from('aeroshell_friend_requests').insert({
+        requester_id: profile.id, recipient_id: person.id, status: 'pending',
+      });
+      if (error) {
+        await loadFriendRequests(profile.id);
+        const detail = error.message.toLowerCase();
+        tell(detail.includes('duplicate') || detail.includes('unique') ? 'A request or friendship already exists for this username.' : 'Friend request could not be sent. Please retry.', 'error');
+        return;
+      }
+      await loadFriendRequests(profile.id);
+      tell('Friend request sent to ' + person.username + '. They must accept before you can chat or call.', 'success');
+    } finally { setFriendRequestBusyId(''); }
+  };
+
+  const respondToFriendRequest = async (request: FriendRequest, decision: 'accepted' | 'declined') => {
+    if (!supabaseClient || !profile || request.recipient_id !== profile.id || request.status !== 'pending' || friendRequestBusyId) return;
+    setFriendRequestBusyId(request.id);
+    try {
+      const { data, error } = await supabaseClient.from('aeroshell_friend_requests')
+        .update({ status: decision }).eq('id', request.id).eq('recipient_id', profile.id).eq('status', 'pending')
+        .select('id').maybeSingle();
+      if (error || !data) throw new Error('That friend request is no longer pending. Refresh the request list and try again.');
+      await loadFriendRequests(profile.id);
+      if (decision === 'accepted') {
+        await loadPeople(profile.id);
+        tell('Friend request accepted. You can now chat and call each other.', 'success');
+      } else tell('Friend request declined.', 'info');
+    } catch (error) {
+      tell(error instanceof Error ? error.message : 'Could not update this friend request.', 'error');
+    } finally { setFriendRequestBusyId(''); }
+  };
+
   const loadGroups = useCallback(async (userId: string): Promise<ChatGroup[]> => {
     if (!supabaseClient) return [];
     const { data: memberships, error: membershipError } = await supabaseClient
@@ -760,6 +833,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (current) {
         await loadProfile(current.user.id);
         await loadPeople(current.user.id);
+        await loadFriendRequests(current.user.id);
         await loadGroups(current.user.id);
       }
       if (active) setBooting(false);
@@ -769,6 +843,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       if (!next) {
         setProfile(null);
         setPeople([]);
+        setFriendRequests([]);
         setGroups([]);
         setActivePerson(null);
         setActiveGroup(null);
@@ -781,6 +856,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
         window.setTimeout(() => {
           void loadProfile(next.user.id);
           void loadPeople(next.user.id);
+          void loadFriendRequests(next.user.id);
           void loadGroups(next.user.id);
           setBooting(false);
         }, 0);
@@ -790,7 +866,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadGroups, loadPeople, loadProfile, pinUnlocked]);
+  }, [loadFriendRequests, loadGroups, loadPeople, loadProfile, pinUnlocked]);
 
   useEffect(() => {
     if (!pinUnlocked || !supabaseClient || !session || !profile) return;
@@ -822,6 +898,15 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
       setLive(false);
     };
   }, [session, profile, pinUnlocked, loadGroups]);
+
+  useEffect(() => {
+    if (!pinUnlocked || !supabaseClient || !session || !profile) return;
+    const channel = supabaseClient.channel('aeroshell-conversation-' + profile.id + '-friend-requests', { config: { private: true } })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aeroshell_friend_requests' }, () => {
+        void loadFriendRequests(profile.id);
+      }).subscribe();
+    return () => { void supabaseClient.removeChannel(channel); };
+  }, [session, profile, pinUnlocked, loadFriendRequests]);
 
   useEffect(() => {
     if (!pinUnlocked || !supabaseClient || !session || !profile || (!activePerson && !activeGroup)) {
@@ -1001,10 +1086,22 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
 
+  const friendIds = useMemo(() => new Set(friendRequests
+    .filter(request => request.status === 'accepted')
+    .map(request => request.requester_id === profile?.id ? request.recipient_id : request.requester_id)),
+    [friendRequests, profile?.id]);
+  const friends = useMemo(() => people.filter(person => friendIds.has(person.id)), [people, friendIds]);
+  const incomingFriendRequests = useMemo(() => friendRequests.filter(request => request.status === 'pending' && request.recipient_id === profile?.id), [friendRequests, profile?.id]);
   const filteredPeople = useMemo(() => {
     const query = peopleQuery.trim().toLowerCase();
-    return people.filter(person => !query || person.username.toLowerCase().includes(query));
-  }, [people, peopleQuery]);
+    return friends.filter(person => !query || person.username.toLowerCase().includes(query));
+  }, [friends, peopleQuery]);
+  const directoryResults = useMemo(() => {
+    const query = peopleQuery.trim().toLowerCase();
+    if (query.length < 2 || !profile) return [];
+    return people.filter(person => person.id !== profile.id && !friendIds.has(person.id) && person.username.toLowerCase().includes(query))
+      .sort((a, b) => a.username.localeCompare(b.username)).slice(0, 8);
+  }, [people, peopleQuery, profile, friendIds]);
 
   const filteredGroups = useMemo(() => {
     const query = peopleQuery.trim().toLowerCase();
@@ -2425,7 +2522,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
   }
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
-    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={people} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
+    <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={friends} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
     {conversationFullscreen && <>
        {iosMode
          ? createPortal(<button type="button" className="master-chat-fullscreen-exit master-chat-ios-fullscreen-exit" title="Exit messages-only fullscreen" aria-label="Exit messages-only fullscreen" onClick={toggleConversationFullscreen}><Minimize2 size={18}/></button>, document.body)
@@ -2434,19 +2531,53 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
      </>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
-      <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Find a username"/></label>
-      <div className="master-chat-list-heading"><Users size={14}/><span>PEOPLE</span><small>{filteredPeople.length}</small></div>
-      <div className="master-chat-people">
-        {filteredPeople.map(person => <button className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
-          if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
-          setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
-        }}>
-          <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0, 1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
-          <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Master Chat member'}</small></span>
-          {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
-        </button>)}
-        {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>No other members yet</b><span>{peopleQuery ? 'No username matches this search.' : 'Share the site with a friend so they can join.'}</span></div>}
-      </div>
+       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search friends or usernames" aria-label="Search friends or usernames"/></label>
+       {peopleQuery.trim().length >= 2 && <div className="master-chat-directory-results">
+         <div className="master-chat-list-heading"><Search size={14}/><span>FIND PEOPLE</span><small>{directoryResults.length}</small></div>
+         {directoryResults.map(person => {
+           const relation = friendRequests.find(request =>
+             (request.requester_id === profile.id && request.recipient_id === person.id)
+             || (request.requester_id === person.id && request.recipient_id === profile.id)
+           );
+           const inbound = relation?.status === 'pending' && relation.recipient_id === profile.id;
+           const outbound = relation?.status === 'pending' && relation.requester_id === profile.id;
+           return <div className="master-chat-directory-result" key={person.id}>
+             <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
+             <span className="master-chat-person-meta"><b>{person.username}</b><small>{inbound ? 'Sent you a friend request' : outbound ? 'Request pending' : 'Not friends yet'}</small></span>
+             {inbound
+               ? <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(relation!, 'accepted')} disabled={friendRequestBusyId===relation!.id}>Accept</button>
+               : outbound
+                 ? <span className="master-chat-friend-pending">Requested</span>
+                 : <button type="button" className="master-chat-friend-add" onClick={() => void sendFriendRequest(person)} disabled={!!friendRequestBusyId}>{friendRequestBusyId===person.id?'Sending…':'Befriend'}</button>}
+           </div>;
+         })}
+         {!directoryResults.length && <p className="master-chat-friend-empty">No matching new users found.</p>}
+       </div>}
+       {incomingFriendRequests.length > 0 && <section className="master-chat-friend-requests">
+         <div className="master-chat-list-heading"><Users size={14}/><span>FRIEND REQUESTS</span><small>{incomingFriendRequests.length}</small></div>
+         {incomingFriendRequests.map(request => {
+           const person = people.find(item => item.id === request.requester_id);
+           if (!person) return null;
+           return <div className="master-chat-directory-result" key={request.id}>
+             <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}</span>
+             <span className="master-chat-person-meta"><b>{person.username}</b><small>Wants to be your friend</small></span>
+             <button type="button" className="master-chat-friend-add" onClick={() => void respondToFriendRequest(request, 'accepted')} disabled={!!friendRequestBusyId}>{friendRequestBusyId===request.id?'…':'Accept'}</button>
+             <button type="button" className="master-chat-friend-decline" onClick={() => void respondToFriendRequest(request, 'declined')} disabled={!!friendRequestBusyId} aria-label={'Decline friend request from '+person.username}>Decline</button>
+           </div>;
+         })}
+       </section>}
+       <div className="master-chat-list-heading"><Users size={14}/><span>FRIENDS</span><small>{filteredPeople.length}</small></div>
+       <div className="master-chat-people">
+         {filteredPeople.map(person => <button type="button" className={'master-chat-person '+(activePerson?.id === person.id ? 'active' : '')} key={person.id} onClick={() => {
+           if (voiceRecorderRef.current || voicePreparingRef.current) { tell('Stop or cancel the voice recording before switching chats.', 'info'); return; }
+           setConversationFullscreen(false); setMessages([]); setDraft(''); setActiveGroup(null); setActivePerson(person); setNotice(''); setAccountSettingsOpen(false); setGroupDialogOpen(false);
+         }}>
+           <span className="master-chat-avatar">{isValidAvatarData(person.avatar_data) ? <img src={person.avatar_data} alt=""/> : person.username.slice(0,1).toUpperCase()}<i className={onlineIds.includes(person.id) ? 'online' : ''}/></span>
+           <span className="master-chat-person-meta"><b>{person.username}</b><small>{onlineIds.includes(person.id) ? 'Online now' : 'Friend'}</small></span>
+           {activePerson?.id === person.id && <span className="master-chat-selected-mark"><Check size={13}/></span>}
+         </button>)}
+         {!filteredPeople.length && <div className="master-chat-empty-people"><Users size={20}/><b>{peopleQuery ? 'No matching friends' : 'No friends yet'}</b><span>{peopleQuery ? 'Try another username, or send a request from Find People above.' : 'Search a username above and tap Befriend. You can chat only after they accept.'}</span></div>}
+       </div>
       <div className="master-chat-list-heading master-chat-groups-heading">
         <Users size={14}/><span>GROUPS</span><small>{groups.length}</small>
         <button type="button" className="master-chat-create-group-button" onClick={openCreateGroup} title="Create a group" aria-label="Create a group"><UserPlus size={15}/></button>
