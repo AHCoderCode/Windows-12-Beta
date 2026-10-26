@@ -197,7 +197,7 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
     if (!session || session.id !== signal.group_call_id || session.status !== 'active') return;
     processingSignalsRef.current.add(signal.id);
     try {
-      let peer = participantProfilesRef.current.find(item => item.id === signal.from_user_id);
+      let peer: Profile | undefined = participantProfilesRef.current.find(item => item.id === signal.from_user_id);
       if (!peer) {
         const { data } = await client!.from('aeroshell_profiles').select('id, username, avatar_data').eq('id', signal.from_user_id).maybeSingle();
         if (data) peer = data as Profile;
@@ -302,7 +302,7 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
     const ids = Array.from(new Set(roster.map(row => row.user_id)));
     const { data: profiles } = ids.length
       ? await client.from('aeroshell_profiles').select('id, username, avatar_data').in('id', ids)
-      : { data: [], error: null };
+      : { data: [] };
     const profileById = new Map(((profiles ?? []) as Profile[]).map(row => [row.id, row]));
     const loaded = roster.flatMap(row => {
       const item = profileById.get(row.user_id);
