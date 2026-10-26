@@ -1162,7 +1162,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
 
   const filteredPeople = useMemo(() => {
     const query = peopleQuery.trim().toLowerCase();
-    return friends.filter(person => !query || person.username.toLowerCase().includes(query));
+    return friends.filter(person => !query || person.username.toLowerCase() === query);
   }, [friends, peopleQuery]);
   useEffect(() => {
     const sequence = ++directorySearchSequenceRef.current;
@@ -1189,7 +1189,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
             return;
           }
           setDirectoryResults(((data ?? []) as ChatProfile[])
-            .filter(person => person.id !== profile.id && !friendIds.has(person.id)));
+            .filter(person => person.id !== profile.id && !friendIds.has(person.id) && person.username.toLowerCase() === query));
         } catch {
           if (sequence === directorySearchSequenceRef.current) {
             setDirectoryResults([]);
@@ -2634,8 +2634,8 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
      </>}
     <aside className="master-chat-sidebar">
       <div className="master-chat-brand"><span className="master-chat-brand-icon"><MessageCircle size={20}/></span><span><b>Master Chat</b><small>Talk to your people</small></span><button className="master-chat-icon-button" title="Refresh member list" onClick={() => void loadPeople(profile.id)}><MoreHorizontal size={18}/></button>{onClose && <button type="button" className="master-chat-icon-button master-chat-inline-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}</div>
-       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Search usernames (3+ characters)" aria-label="Search friends or usernames"/></label>
-       {peopleQuery.trim().length > 0 && peopleQuery.trim().length < 3 && <p className="master-chat-search-hint">Type at least 3 characters to find a username.</p>}
+       <label className="master-chat-search"><Search size={15}/><input value={peopleQuery} onChange={event => setPeopleQuery(event.target.value)} placeholder="Enter exact username (3+ characters)" aria-label="Search friends or usernames"/></label>
+       {peopleQuery.trim().length > 0 && peopleQuery.trim().length < 3 && <p className="master-chat-search-hint">Type at least 3 characters, and enter the person's full username to see a match.</p>}
        {peopleQuery.trim().length >= 3 && <div className="master-chat-directory-results">
          <div className="master-chat-list-heading"><Search size={14}/><span>FIND PEOPLE</span><small>{directorySearchBusy ? '…' : directoryResults.length}</small></div>
          {directorySearchBusy && <p className="master-chat-friend-empty" role="status">Searching usernames…</p>}
@@ -2660,7 +2660,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
                  : <button type="button" className="master-chat-friend-add" onClick={() => void sendFriendRequest(person)} disabled={!!friendRequestBusyId}>{friendRequestBusyId===person.id?'Sending…':'Add Friend'}</button>}
            </div>;
          })}
-         {!directorySearchBusy && !directorySearchError && !directoryResults.length && <p className="master-chat-friend-empty">No matching usernames found.</p>}
+         {!directorySearchBusy && !directorySearchError && !directoryResults.length && <p className="master-chat-friend-empty">No exact username match. Enter the full username exactly as it appears.</p>}
        </div>}
        <button type="button" className={'master-chat-friend-request-bar'+(friendRequestsOpen ? ' open' : '')}
          aria-expanded={friendRequestsOpen} aria-controls="master-chat-friend-requests-panel"
