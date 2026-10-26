@@ -433,13 +433,27 @@ export function MasterChatGroupCalls({ client, profile, groups, activeGroup, ena
     setNotice('');
     let stream: MediaStream | null = null;
     try {
+      // Group-call invitations also have rows in aeroshell_calls. Never count those rows
+      // as an unrelated active direct call, or an invitation blocks its own acceptance.
       const { data: activeCalls, error: activeError } = await client.from('aeroshell_calls')
-        .select('id')
+        .select('id, status, created_at')
         .in('status', ['ringing', 'accepted'])
         .or('caller_id.eq.' + profile.id + ',callee_id.eq.' + profile.id)
-        .limit(1);
+        .is('group_call_id', null)
+        .limit(10);
       if (activeError) throw new Error('Could not check your current call state. Refresh and try again.');
-      if (activeCalls?.length) throw new Error('Finish your current voice/video call before accepting a group call.');
+      // Direct incoming calls expire after 45 seconds. Clear orphaned ringing rows instead
+      // of letting an old unanswered call permanently lock group calling.
+      const now = Date.now();
+      const staleRingingIds = (activeCalls ?? [])
+        .filter(call => call.status === 'ringing' && (!Number.isFinite(Date.parse(call.created_at)) || now - Date.parse(call.created_at) > 45_000))
+        .map(call => call.id);
+      if (staleRingingIds.length) {
+        await client.from('aeroshell_calls').update({ status: 'ended' })
+          .in('id', staleRingingIds).eq('status', 'ringing');
+      }
+      const liveDirectCalls = (activeCalls ?? []).filter(call => !staleRingingIds.includes(call.id));
+      if (liveDirectCalls.length) throw new Error('A direct call is still active in another window. End that call before joining the group call.');
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser does not support calls over HTTPS.');
       stream = await navigator.mediaDevices.getUserMedia({
         audio: VOICE_MICROPHONE_CONSTRAINTS,
