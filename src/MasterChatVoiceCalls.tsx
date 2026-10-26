@@ -488,7 +488,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       }
       if (activeCallRef.current) return;
       const peer = peopleRef.current.find(person => person.id === row.caller_id)
-        ?? (await client.from('aeroshell_profiles').select('id, username').eq('id', row.caller_id).maybeSingle()).data as ChatProfile | null;
+        ?? (await client.from('aeroshell_profiles').select('id, username, avatar_data').eq('id', row.caller_id).maybeSingle()).data as ChatProfile | null;
       if (!active || !peer) return;
       const view: CallView = { ...row, direction: 'incoming', peer };
       setCall(view);
