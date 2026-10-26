@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js';
-import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Copy, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ChevronRight, CircleHelp, Clock3, Copy, Download, EyeOff, FileText, Fingerprint, ImagePlus, LockKeyhole, LogIn, LogOut, Maximize2, MessageCircle, Mic, Minimize2, MoreHorizontal, Paperclip, Pause, PhoneCall, Play, Search, Send, Settings2, ShieldCheck, Trash2, UserPlus, Users, Wifi, WifiOff, X } from 'lucide-react';
 import { isValidAvatarData, MAX_PROFILE_AVATAR_DATA_LENGTH } from './profile-avatar-utils';
 import { MasterChatVoiceCalls } from './MasterChatVoiceCalls';
+import { MasterChatGroupCalls } from './MasterChatGroupCalls';
 import { getConversationMessages, getGroupMessages } from './master-chat-utils';
 
 type ChatProfile = { id: string; username: string; avatar_data?: string | null };
@@ -456,6 +457,7 @@ export function MasterChat({ iosMode = false, showCallLauncher = true, onClose }
   const [activePerson, setActivePerson] = useState<ChatProfile | null>(null);
   const [groups, setGroups] = useState<ChatGroup[]>([]);
   const [activeGroup, setActiveGroup] = useState<ChatGroup | null>(null);
+  const [groupCallPickerOpen, setGroupCallPickerOpen] = useState(false);
   const [groupMembers, setGroupMembers] = useState<ChatGroupMember[]>([]);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupDialogMode, setGroupDialogMode] = useState<'create' | 'manage'>('create');
@@ -2621,6 +2623,8 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
 
   return <section ref={chatRootRef} className={'master-chat-app'+(conversationFullscreen ? ' master-chat-conversation-fullscreen' : '')+(activePerson ? ' master-chat-has-active-person' : '')+(activeGroup ? ' master-chat-has-active-group' : '')}>
     <MasterChatVoiceCalls client={supabaseClient} profile={profile} people={friends} activePerson={activePerson} enabled={pinUnlocked && !!session} showCallLauncher={showCallLauncher && !activeGroup} portalRoot={iosMode || conversationFullscreen ? document.body : undefined}/>
+    <MasterChatGroupCalls client={supabaseClient} profile={profile} groups={groups} activeGroup={activeGroup ? { id: activeGroup.id, name: activeGroup.name, avatar_data: activeGroup.avatar_data } : null}
+      enabled={pinUnlocked && !!session} pickerOpen={groupCallPickerOpen} onPickerClose={() => setGroupCallPickerOpen(false)} portalRoot={document.body}/>
 
     {conversationFullscreen && <>
        {iosMode
@@ -2730,6 +2734,7 @@ const passkeyPreflightModal = passkeyPromptIntent ? createPortal(
             : <span className="master-chat-avatar">{isValidAvatarData(activePerson?.avatar_data) ? <img src={activePerson?.avatar_data ?? ''} alt=""/> : (activePerson?.username ?? '?').slice(0, 1).toUpperCase()}<i className={activePerson && onlineIds.includes(activePerson.id) ? 'online' : ''}/></span>}
           <span className="master-chat-conversation-title"><b>{activeGroup?.name ?? activePerson?.username}</b><small>{activeGroup ? activeGroup.member_count + ' members · ' + (activeGroup.my_role === 'admin' ? 'You are an admin' : 'Group conversation') : activePerson && onlineIds.includes(activePerson.id) ? 'Online now' : 'Private conversation'}</small></span>
           <span className={'master-chat-connection '+(live ? 'connected' : '')}><i/>{live ? 'Live' : 'Reconnecting'}</span>
+          {activeGroup && <button type="button" className="master-chat-group-call-button" title="Start a voice or video call with this group" aria-label="Start group call" onClick={() => setGroupCallPickerOpen(true)}><PhoneCall size={16}/><span>Group call</span></button>}
           {activeGroup && <button type="button" className="master-chat-group-info-button" title="Group info and members" aria-label="Group info and members" onClick={openGroupManagement}><Users size={17}/><span>Group info</span></button>}
           {iosMode && <button type="button" className="master-chat-fullscreen-toggle" title="Show messages only" aria-label="Show messages only" onClick={toggleConversationFullscreen}><Maximize2 size={17}/></button>}
           {onClose && <button type="button" className="master-chat-header-close" title="Close Master Chat" aria-label="Close Master Chat" onClick={onClose}><X size={18}/></button>}
