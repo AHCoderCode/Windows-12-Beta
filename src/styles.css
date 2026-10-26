@@ -2574,3 +2574,135 @@ input,textarea,select,.terminal-input-row input,.code-textarea,.writer-editor,.n
 .master-chat-composer-tools-label{flex:0 0 100%;display:block;padding:2px 2px 0;color:var(--muted);font-size:9px;font-weight:850;letter-spacing:.09em;line-height:1.4}
 .master-chat-composer-tools .master-chat-composer-tool{min-height:36px}
 .master-chat-composer-tools .master-chat-composer-tool:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Master Chat friend discovery and request controls */
+.master-chat-directory-results,
+.master-chat-friend-requests{
+  flex:0 0 auto;
+  min-width:0;
+  margin:0 10px 9px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  border-radius:11px;
+  background:var(--surface);
+}
+.master-chat-directory-results{max-height:218px;overflow-y:auto;overscroll-behavior:contain}
+.master-chat-friend-requests{max-height:184px;overflow-y:auto;overscroll-behavior:contain}
+.master-chat-directory-results .master-chat-list-heading,
+.master-chat-friend-requests .master-chat-list-heading{
+  position:sticky;
+  top:0;
+  z-index:1;
+  padding:9px 10px;
+  border-bottom:1px solid var(--border);
+  background:var(--soft);
+  color:var(--muted);
+}
+.master-chat-directory-result{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  padding:8px;
+  border-top:1px solid var(--border);
+}
+.master-chat-directory-result:first-of-type{border-top:0}
+.master-chat-directory-result .master-chat-avatar{
+  flex:0 0 32px;
+  width:32px;
+  height:32px;
+}
+.master-chat-directory-result .master-chat-person-meta{
+  flex:1 1 90px;
+  min-width:0;
+  overflow:hidden;
+}
+.master-chat-directory-result .master-chat-person-meta b{
+  overflow:hidden;
+  color:var(--text);
+  font-size:11px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.master-chat-directory-result .master-chat-person-meta small{
+  overflow:hidden;
+  color:var(--muted);
+  font-size:9px;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:normal;
+}
+.master-chat-directory-result button{
+  flex:0 0 auto;
+  min-height:34px;
+  padding:0 11px;
+  border-radius:8px;
+  font-size:10px;
+  font-weight:800;
+  line-height:1.2;
+  cursor:pointer;
+  transition:filter .15s ease,background .15s ease,border-color .15s ease;
+}
+.master-chat-directory-result button:focus-visible,
+.master-chat-request-refresh:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.master-chat-directory-result button:disabled{cursor:wait;opacity:.62}
+.master-chat-directory-result button.master-chat-friend-add{
+  border:1px solid color-mix(in srgb,var(--accent) 78%,transparent);
+  background:var(--accent);
+  color:#fff;
+  box-shadow:0 2px 7px color-mix(in srgb,var(--accent) 24%,transparent);
+}
+.master-chat-directory-result button.master-chat-friend-add:hover:not(:disabled){filter:brightness(1.08)}
+.master-chat-directory-result button.master-chat-friend-decline{
+  border:1px solid var(--border);
+  background:var(--soft);
+  color:var(--text);
+}
+.master-chat-directory-result button.master-chat-friend-decline:hover:not(:disabled){
+  border-color:color-mix(in srgb,#e46c7a 55%,var(--border));
+  background:color-mix(in srgb,#e46c7a 12%,var(--soft));
+}
+.master-chat-friend-pending{
+  flex:0 0 auto;
+  max-width:112px;
+  padding:6px 8px;
+  border:1px solid color-mix(in srgb,var(--accent) 28%,var(--border));
+  border-radius:8px;
+  background:color-mix(in srgb,var(--accent) 10%,var(--soft));
+  color:var(--text);
+  font-size:9px;
+  font-weight:750;
+  line-height:1.35;
+  text-align:center;
+}
+.master-chat-friend-empty{
+  margin:0;
+  padding:10px 11px 12px;
+  color:var(--muted);
+  font-size:10px;
+  line-height:1.55;
+}
+.master-chat-request-refresh{
+  display:grid;
+  flex:0 0 26px;
+  place-items:center;
+  width:26px;
+  height:26px;
+  margin-left:2px;
+  border:1px solid var(--border);
+  border-radius:7px;
+  background:var(--surface);
+  color:var(--muted);
+  cursor:pointer;
+}
+.master-chat-request-refresh:hover{background:var(--soft);color:var(--text)}
+@media(max-width:520px){
+  .master-chat-directory-results,.master-chat-friend-requests{margin-right:7px;margin-left:7px}
+  .master-chat-directory-result{gap:7px;padding:7px}
+  .master-chat-directory-result .master-chat-person-meta{flex-basis:90px}
+  .master-chat-directory-result button{padding:0 9px;min-height:34px}
+  .master-chat-friend-pending{max-width:104px;padding:6px}
+}
