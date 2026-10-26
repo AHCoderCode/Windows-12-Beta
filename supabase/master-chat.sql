@@ -1810,11 +1810,9 @@ with check (
 );
 
 
--- ===== Latest addition: private profile discovery and server-side search =====
+-- ===== Private profile discovery and search =====
 
--- Restrict profile listing to connected accounts and expose a rate-limited, search-on-demand discovery RPC.
--- Direct message and call policies already require an accepted friendship; this migration closes profile enumeration.
-
+-- Restrict profile listing to related accounts and expose rate-limited, search-on-demand discovery.
 create schema if not exists private;
 
 create table if not exists private.aeroshell_profile_search_events (
@@ -1824,11 +1822,10 @@ create table if not exists private.aeroshell_profile_search_events (
 );
 create index if not exists aeroshell_profile_search_events_user_time_idx
   on private.aeroshell_profile_search_events (user_id, searched_at desc);
-
 alter table private.aeroshell_profile_search_events enable row level security;
 revoke all on table private.aeroshell_profile_search_events from public, anon, authenticated;
 
-create or replace function public.aeroshell_search_profiles(search_query text)
+create or replace function private.aeroshell_search_profiles(search_query text)
 returns table (id uuid, username text, avatar_data text)
 language plpgsql
 security definer
@@ -1853,11 +1850,9 @@ begin
   delete from private.aeroshell_profile_search_events
     where searched_at < now() - interval '10 minutes';
 
-  select count(*)::integer
-    into v_recent_count
+  select count(*)::integer into v_recent_count
     from private.aeroshell_profile_search_events e
-    where e.user_id = v_actor
-      and e.searched_at >= now() - interval '1 minute';
+    where e.user_id = v_actor and e.searched_at >= now() - interval '1 minute';
 
   if v_recent_count >= 20 then
     raise exception 'Too many username searches. Wait a minute and try again.'
@@ -1869,13 +1864,22 @@ begin
   return query
     select p.id, p.username, p.avatar_data
     from public.aeroshell_profiles p
-    where p.id <> v_actor
-      and position(v_query in lower(p.username)) > 0
+    where p.id <> v_actor and position(v_query in lower(p.username)) > 0
     order by lower(p.username)
     limit 8;
 end;
 $function$;
+revoke all on function private.aeroshell_search_profiles(text) from public, anon;
+grant execute on function private.aeroshell_search_profiles(text) to authenticated;
 
+create or replace function public.aeroshell_search_profiles(search_query text)
+returns table (id uuid, username text, avatar_data text)
+language sql
+security invoker
+set search_path = ''
+as $function$
+  select * from private.aeroshell_search_profiles(search_query);
+$function$;
 revoke all on function public.aeroshell_search_profiles(text) from public, anon;
 grant execute on function public.aeroshell_search_profiles(text) to authenticated;
 
@@ -1891,8 +1895,7 @@ using (
     id = (select auth.uid())
     or private.aeroshell_are_friends((select auth.uid()), id)
     or exists (
-      select 1
-      from public.aeroshell_friend_requests fr
+      select 1 from public.aeroshell_friend_requests fr
       where fr.status = 'pending'
         and (
           (fr.requester_id = (select auth.uid()) and fr.recipient_id = aeroshell_profiles.id)
@@ -1900,12 +1903,9 @@ using (
         )
     )
     or exists (
-      select 1
-      from public.aeroshell_group_members mine
-      join public.aeroshell_group_members other_member
-        on other_member.group_id = mine.group_id
-      where mine.user_id = (select auth.uid())
-        and other_member.user_id = aeroshell_profiles.id
+      select 1 from public.aeroshell_group_members mine
+      join public.aeroshell_group_members other_member on other_member.group_id = mine.group_id
+      where mine.user_id = (select auth.uid()) and other_member.user_id = aeroshell_profiles.id
     )
   )
 );
