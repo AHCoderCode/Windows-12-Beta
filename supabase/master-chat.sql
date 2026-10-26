@@ -1865,7 +1865,10 @@ begin
     select p.id, p.username, p.avatar_data
     from public.aeroshell_profiles p
     where p.id <> v_actor and position(v_query in lower(p.username)) > 0
-    order by lower(p.username)
+    order by
+      (lower(p.username) = v_query) desc,
+      (left(lower(p.username), char_length(v_query)) = v_query) desc,
+      lower(p.username)
     limit 8;
 end;
 $function$;
