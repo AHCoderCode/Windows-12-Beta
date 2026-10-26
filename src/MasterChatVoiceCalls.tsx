@@ -575,7 +575,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
     <audio ref={remoteAudioRef} autoPlay playsInline aria-label="Remote voice call audio" className="master-chat-remote-audio"/>
     {showCallLauncher && callState === 'idle' && (activePerson
       ? (portalRoot
-        ? createPortal(<div className="master-chat-active-call-actions">
+        ? createPortal(<div className={"master-chat-active-call-actions" + (portalRoot ? " portal" : "")}>
             <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
               disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
               <PhoneCall size={16}/><span>Call</span>
@@ -585,7 +585,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
               <Video size={16}/><span>Video</span>
             </button>
           </div>, portalRoot)
-        : <div className="master-chat-active-call-actions">
+        : <div className={"master-chat-active-call-actions" + (portalRoot ? " portal" : "")}>
             <button type="button" className="master-chat-voice-call-button" onClick={() => void startCall(activePerson, 'audio')}
               disabled={!enabled || busy || !client || !!activeCall} title={'Voice call ' + activePerson.username} aria-label={'Voice call ' + activePerson.username}>
               <PhoneCall size={16}/><span>Call</span>
