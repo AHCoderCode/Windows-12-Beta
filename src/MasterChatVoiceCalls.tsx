@@ -649,7 +649,7 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
         {activeCall.media_type === 'video' && <>
           <div className="master-chat-call-video-stage">
-            <video ref={remoteVideoRef} autoPlay playsInline
+            <video ref={remoteVideoRef} autoPlay playsInline muted
               className={mainVideo === 'remote' ? 'master-chat-call-video-main' : 'master-chat-call-video-thumb remote-thumb'}
               aria-label={'Video from ' + activeCall.peer.username} role="button" tabIndex={0}
               title={'Show ' + activeCall.peer.username + ' full screen'}
