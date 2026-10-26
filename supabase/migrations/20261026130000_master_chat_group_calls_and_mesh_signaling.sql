@@ -128,28 +128,39 @@ with check (
 );
 
 drop policy if exists "Users can create calls as themselves" on public.aeroshell_calls;
-create policy "Users can create calls as themselves" on public.aeroshell_calls
-for insert to authenticated
+create policy "Users can create calls as themselves"
+on public.aeroshell_calls for insert to authenticated
 with check (
-  caller_id = (select auth.uid())
+  private.aeroshell_chat_actor_is_valid()
+  and caller_id = (select auth.uid())
   and caller_id <> callee_id
   and status = 'ringing'
   and (
-    group_call_id is null
-    or exists (
-      select 1
-      from public.aeroshell_group_calls gc
-      join public.aeroshell_group_call_participants invite
-        on invite.group_call_id=gc.id and invite.user_id=aeroshell_calls.callee_id and invite.status='invited'
-      where gc.id=aeroshell_calls.group_call_id
-        and gc.initiator_id=(select auth.uid())
-        and gc.status='active'
-        and gc.media_type=aeroshell_calls.media_type
-        and private.aeroshell_group_is_member(gc.group_id,(select auth.uid()))
-        and private.aeroshell_group_is_member(gc.group_id,aeroshell_calls.callee_id)
+    (
+      group_call_id is null
+      and private.aeroshell_are_friends(caller_id, callee_id)
+    )
+    or
+    (
+      group_call_id is not null
+      and exists (
+        select 1
+        from public.aeroshell_group_calls gc
+        join public.aeroshell_group_call_participants invite
+          on invite.group_call_id = gc.id
+         and invite.user_id = aeroshell_calls.callee_id
+         and invite.status = 'invited'
+        where gc.id = aeroshell_calls.group_call_id
+          and gc.initiator_id = (select auth.uid())
+          and gc.status = 'active'
+          and gc.media_type = aeroshell_calls.media_type
+          and private.aeroshell_group_is_member(gc.group_id, (select auth.uid()))
+          and private.aeroshell_group_is_member(gc.group_id, aeroshell_calls.callee_id)
+      )
     )
   )
 );
+
 
 create or replace function public.aeroshell_guard_call_transition()
 returns trigger language plpgsql security definer set search_path = ''
