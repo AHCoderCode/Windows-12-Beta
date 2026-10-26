@@ -74,6 +74,20 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
   const mountedRef = useRef(true);
   const acceptingCallRef = useRef(false);
 
+  useEffect(() => {
+    if (!activeCall || activeCall.media_type !== 'video') return;
+    const localVideo = localVideoRef.current;
+    const remoteVideo = remoteVideoRef.current;
+    if (localVideo && localStreamRef.current && localVideo.srcObject !== localStreamRef.current) {
+      localVideo.srcObject = localStreamRef.current;
+      void localVideo.play().catch(() => undefined);
+    }
+    if (remoteVideo && remoteStreamRef.current && remoteVideo.srcObject !== remoteStreamRef.current) {
+      remoteVideo.srcObject = remoteStreamRef.current;
+      void remoteVideo.play().catch(() => setNotice('Tap the main video once to allow playback.'));
+    }
+  }, [activeCall?.id, activeCall?.media_type, callState, mainVideo]);
+
   const setCall = useCallback((next: CallView | null) => {
     activeCallRef.current = next;
     setActiveCall(next);
@@ -633,7 +647,6 @@ export function MasterChatVoiceCalls({ client, profile, people, activePerson, en
       <section className={'master-chat-call-card'+(activeCall.media_type === 'video' ? ' video-call' : '')}>
         <button type="button" className="master-chat-call-close" title="Close call window" aria-label="Close call window" disabled={busy}
           onClick={() => { if (activeCall.direction === 'incoming' && callState === 'incoming') void rejectCall(); else void finishCall('ended', 'Call ended.'); }}><X size={17}/></button>
-        {activeCall.media_type !== 'video' && <div className={'master-chat-call-avatar '+(callState === 'connected' ? 'speaking' : '')}>{activeCall.peer.username.slice(0,1).toUpperCase()}</div>}
         {activeCall.media_type === 'video' && <>
           <div className="master-chat-call-video-stage">
             <video ref={remoteVideoRef} autoPlay playsInline
